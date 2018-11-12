@@ -8,6 +8,13 @@ const linux = std.os.linux;
 const darwin = std.os.darwin;
 const posix = std.os.posix;
 
+const secondsPerMinute = 60;
+const secondsPerHour = 60 * secondsPerMinute;
+const secondsPerDay = 24 * secondsPerHour;
+const secondsPerWeek = 7 * secondsPerDay;
+const daysPer400Years = 365 * 400 + 97;
+const daysPer100Years = 365 * 100 + 24;
+const daysPer4Years = 365 * 4 + 1;
 // The unsigned zero year for internal calculations.
 // Must be 1 mod 400, and times before it will not compute correctly,
 // but otherwise can be changed at will.
@@ -34,7 +41,7 @@ const nsecMask = 1 << 30 - 1;
 const nsecShift = 30;
 
 pub const Time = struct.{
-    wall: u54,
+    wall: u64,
     ext: i64,
     loc: ?*Loacation,
 };
@@ -44,7 +51,12 @@ pub const Loacation = struct.{};
 pub fn now() Time {
     const bt = timeNow();
     const sec = bt.sec + unixToInternal - minWall;
-    return Time.{ .wall = @intCast(u64, bt.nsec), .ext = @intCast(u64, sec + minWall) };
+    return Time.{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
+}
+
+test "now" {
+    const ts = now();
+    debug.warn("{}\n", ts);
 }
 
 const bintime = struct.{
@@ -64,7 +76,7 @@ fn timeNow() bintime {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
             debug.assert(err == 0);
-            return bintime.{ .sec = ts.tv_sec, .nsec = ts.tv_usec };
+            return bintime.{ .sec = tv.tv_sec, .nsec = tv.tv_usec };
         },
         else => @compileError("Unsupported OS"),
     }
