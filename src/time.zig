@@ -40,18 +40,18 @@ const minWall = wallToInternal; // year 1885
 const nsecMask = 1 << 30 - 1;
 const nsecShift = 30;
 
-pub const Time = struct.{
+pub const Time = struct {
     wall: u64,
     ext: i64,
     loc: ?*Loacation,
 };
 
-pub const Loacation = struct.{};
+pub const Loacation = struct {};
 
 pub fn now() Time {
     const bt = timeNow();
     const sec = bt.sec + unixToInternal - minWall;
-    return Time.{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
+    return Time{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
 }
 
 test "now" {
@@ -59,7 +59,7 @@ test "now" {
     debug.warn("{}\n", ts);
 }
 
-const bintime = struct.{
+const bintime = struct {
     sec: isize,
     nsec: isize,
 };
@@ -70,13 +70,13 @@ fn timeNow() bintime {
             var ts: posix.timespec = undefined;
             const err = posix.clock_gettime(posix.CLOCK_REALTIME, &ts);
             debug.assert(err == 0);
-            return bintime.{ .sec = ts.tv_sec, .nsec = ts.tv_nsec };
+            return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec };
         },
         Os.macosx, Os.ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
             debug.assert(err == 0);
-            return bintime.{ .sec = tv.tv_sec, .nsec = tv.tv_usec };
+            return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec };
         },
         else => @compileError("Unsupported OS"),
     }
