@@ -1,7 +1,15 @@
 pub const Location = struct {
     name: []const u8,
-    zone: []zone,
-    tz: zoneTrans,
+    zone: ?[]zone,
+    tz: ?zoneTrans,
+
+    fn initName(name: []const u8) Location {
+        return Location{
+            .name = name,
+            .zone = null,
+            .tz = null,
+        };
+    }
 };
 
 const zone = struct {
