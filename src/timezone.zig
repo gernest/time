@@ -29,3 +29,6 @@ const zoneTrans = struct {
 // transitions.
 const alpha: i64 = -1 << 63;
 const omega: i64 = 1 << 63 - 1;
+
+const UTC = utc_location;
+var utc_location = &Location.initName("UTC");
