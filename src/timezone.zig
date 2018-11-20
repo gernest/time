@@ -107,4 +107,11 @@ pub fn loadLocationFromTZData(name: []const u8, data: []u8) !void {
         Zone,
         Char,
     };
+
+    var n: [6]isize = undefined;
+    var i: usize = 0;
+    while (i < 6) : (i += 1) {
+        const nn = try d.big4();
+        n[i] = @intCast(isize, nn);
+    }
 }
