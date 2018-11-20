@@ -242,3 +242,10 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     }
     return loc;
 }
+
+// darwin_sources directory to search for timezone files.
+const unix_sources = [][]const u8{
+    "/usr/share/zoneinfo/",
+    "/usr/share/lib/zoneinfo/",
+    "/usr/lib/locale/TZ/",
+};
