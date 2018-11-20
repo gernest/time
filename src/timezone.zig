@@ -9,15 +9,24 @@ const warn = std.debug.warn;
 
 pub const Location = struct {
     name: []const u8,
-    zone: ?[]zone,
-    tz: ?zoneTrans,
+    zone: ?zoneList,
+    tx: ?zoneTransList,
 
     fn initName(name: []const u8) Location {
         return Location{
             .name = name,
             .zone = null,
-            .tz = null,
+            .tx = null,
         };
+    }
+
+    fn deinit(self: Location) void {
+        if (self.zone) |v| {
+            v.deinit();
+        }
+        if (self.tx) |v| {
+            v.deinit();
+        }
     }
 };
 
@@ -26,6 +35,9 @@ const zone = struct {
     offset: isize,
     is_dst: bool,
 };
+
+const zoneList = std.ArrayList(zone);
+const zoneTransList = std.ArrayList(zone);
 
 const zoneTrans = struct {
     when: i64,
@@ -76,7 +88,7 @@ const dataIO = struct {
     }
 };
 
-pub fn loadLocationFromTZData(name: []const u8, data: []u8) !void {
+pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !void {
     var d = &dataIO.init(data);
     var magic: [4]u8 = undefined;
     var size = d.read(magic[0..]);
