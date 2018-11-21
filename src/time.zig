@@ -37,13 +37,31 @@ const internalToWall: i64 = -wallToInternal;
 const hasMonotonic = 1 << 63;
 const maxWall = wallToInternal + (1 << 33 - 1); // year 2157
 const minWall = wallToInternal; // year 1885
-const nsecMask = 1 << 30 - 1;
+
+// FIXME: Zig comiler was complainit when give 1 << 30 - 1 expression. I'm not a
+// zig wizard yet, and I need to get over with this so I am hardcoding the value
+// for now.
+// const nsecMask = 1 << 30 - 1;
+const nsecMask: u64 = 1073741823;
 const nsecShift = 30;
 
 pub const Time = struct {
     wall: u64,
     ext: i64,
     loc: ?*Loacation,
+
+    fn nsec(self: *Time) i32 {
+        return @intCast(i32, self.wall & nsecMask);
+    }
+
+    fn sec(self: *Time) i64 {
+        return wallToInternal + @intCast(i64, self.wall << 1 >> (nsecShift + 1));
+    }
+
+    // unixSec returns the time's seconds since Jan 1 1970 (Unix time).
+    fn unixSec(self: *Time) i64 {
+        return self.sec() + internalToUnix;
+    }
 };
 
 pub const Loacation = struct {};
@@ -55,8 +73,11 @@ pub fn now() Time {
 }
 
 test "now" {
-    const ts = now();
+    var ts = now();
     debug.warn("{}\n", ts);
+    debug.warn("{} nsec\n", ts.nsec());
+    debug.warn("{} sec\n", ts.sec());
+    debug.warn("{} unix_sec\n", ts.unixSec());
 }
 
 const bintime = struct {
