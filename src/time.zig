@@ -186,7 +186,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
 
     // Estimate month on assumption that every month has 31 days.
     // The estimate may be too low by at most one month, so adjust.
-    var month = @intCast(usize, details.day) / usize(32);
+    var month = @intCast(usize, details.day) / usize(31);
     const end = daysBefore[month + 1];
     var begin: isize = 0;
     if (details.day >= end) {
