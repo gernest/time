@@ -191,7 +191,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     _ = d.read(abbrev);
 
     // Leap-second time pairs
-    d.skip(n[@enumToInt(n_value.Char)] * 8);
+    d.skip(n[@enumToInt(n_value.Leap)] * 8);
 
     // Whether tx times associated with local time types
     // are specified as standard time or wall time.
@@ -203,6 +203,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     if (size == 0) {
         return error.BadData;
     }
+
     // If version == 2 or 3, the entire file repeats, this time using
     // 8-byte ints for txtimes and leap seconds.
     // We won't need those until 2106.
@@ -304,10 +305,10 @@ fn loadLocationFile(name: []const u8, buf: *std.Buffer) !void {
 test "readFile" {
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
-
     const name = "Asia/Jerusalem";
     try loadLocationFile(name, &buf);
     var loc = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
+    defer loc.deinit();
     warn("{}\n", loc.name);
     if (loc.zone) |v| {
         warn("{}\n", v.len);
