@@ -79,6 +79,10 @@ pub const Time = struct {
         const us = u.sec();
         return ts > us or (ts == us and self.nsec() > u.nsec());
     }
+
+    pub fn before(self: Time, u: Time) bool {
+        return (self.sec() < u.sec()) or (self.sec() == u.sec() and self.nsec() < u.nsec());
+    }
 };
 
 test "isszero" {
