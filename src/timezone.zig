@@ -11,8 +11,8 @@ const max_file_size: usize = 10 << 20;
 
 pub const Location = struct {
     name: []const u8,
-    zone: zoneList,
-    tx: zoneTransList,
+    zone: ?[]zone,
+    tx: ?[]zoneTrans,
 
     // Most lookups will be for the current time.
     // To avoid the binary search through tx, keep a
@@ -33,8 +33,8 @@ pub const Location = struct {
         var arena = std.heap.ArenaAllocator.init(a);
         return Location{
             .name = name,
-            .zone = zoneList.init(&arena.allocator),
-            .tx = zoneTransList.init(&arena.allocator),
+            .zone = null,
+            .tx = null,
             .arena = arena,
             .cache_start = null,
             .cache_end = null,
@@ -170,7 +170,6 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
         const nn = try d.big4();
         n[i] = @intCast(usize, nn);
     }
-
     // Transition times.
     var tx_times = try arena_allocator.alloc(u8, n[@enumToInt(n_value.Time)] * 4);
     _ = d.read(tx_times);
@@ -215,13 +214,13 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     // First the zone information.
     //utcoff[4] isdst[1] nameindex[1]
     i = 0;
+    var zones = try zalloc.alloc(zone, n[@enumToInt(n_value.Zone)]);
     while (i < n[@enumToInt(n_value.Zone)]) : (i += 1) {
         const zn = try zone_data.big4();
         const b = try zone_data.byte();
         var z: zone = undefined;
         z.offset = @intCast(isize, zn);
         z.is_dst = b != 0;
-
         const b2 = try zone_data.byte();
         if (@intCast(usize, b2) >= abbrev.len) {
             return error.BadData;
@@ -232,32 +231,40 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
         var znb = try zalloc.alloc(u8, cn.len);
         mem.copy(u8, znb, cn);
         z.name = znb;
-        try loc.zone.append(z);
+        zones[i] = z;
     }
+    loc.zone = zones;
+
     // Now the transition time info.
     i = 0;
-    while (i < n[@enumToInt(n_value.Time)]) : (i += 1) {
-        var tx: zoneTrans = undefined;
-        const w = try tx_times_data.big4();
-        tx.when = @intCast(i64, w);
-        if (@intCast(usize, tx_zone[i]) >= loc.zone.len) {
-            return error.BadData;
+    const tx_n = n[@enumToInt(n_value.Time)];
+    var tx_list = try zalloc.alloc(zoneTrans, tx_n);
+    if (tx_n != 0) {
+        while (i < n[@enumToInt(n_value.Time)]) : (i += 1) {
+            var tx: zoneTrans = undefined;
+            const w = try tx_times_data.big4();
+            tx.when = @intCast(i64, w);
+            if (@intCast(usize, tx_zone[i]) >= zones.len) {
+                return error.BadData;
+            }
+            tx.index = @intCast(usize, tx_zone[i]);
+            if (i < isstd.len) {
+                tx.is_std = isstd[i] != 0;
+            }
+            if (i < isutc.len) {
+                tx.is_utc = isutc[i] != 0;
+            }
+            tx_list[i] = tx;
         }
-        tx.index = @intCast(usize, tx_zone[i]);
-        if (i < isstd.len) {
-            tx.is_std = isstd[i] != 0;
-        }
-        if (i < isutc.len) {
-            tx.is_utc = isutc[i] != 0;
-        }
-    }
-    if (loc.tx.len == 0) {
-        try loc.tx.append(zoneTrans{
+        loc.tx = tx_list;
+    } else {
+        var ls = []zoneTrans{zoneTrans{
             .when = alpha,
             .index = 0,
             .is_std = false,
             .is_utc = false,
-        });
+        }};
+        loc.tx = ls[0..];
     }
     return loc;
 }
@@ -299,5 +306,18 @@ test "readFile" {
 
     const name = "Asia/Jerusalem";
     try loadLocationFile(name, &buf);
-    _ = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
+    var loc = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
+    warn("{}\n", loc.name);
+    if (loc.zone) |v| {
+        warn("{}\n", v.len);
+        for (v) |vx| {
+            warn("{}\n", vx);
+        }
+    }
+    if (loc.tx) |v| {
+        warn("{}\n", v.len);
+        for (v) |vx| {
+            warn("{}\n", vx);
+        }
+    }
 }
