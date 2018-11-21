@@ -9,6 +9,10 @@ const warn = std.debug.warn;
 
 const max_file_size: usize = 10 << 20;
 
+const dalloc = std.heap.DirectAllocator.init();
+var utc_local = Location.init(&dalloc.allocator, "UTC");
+pub var local: *Location = &utc_local;
+
 pub const Location = struct {
     name: []const u8,
     zone: ?[]zone,
