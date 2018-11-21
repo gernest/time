@@ -58,10 +58,7 @@ pub const Time = struct {
     }
 
     fn sec(self: Time) i64 {
-        if (self.wall == 0) {
-            return 0;
-        }
-        return wallToInternal + @intCast(i64, self.wall << 1 >> (nsecShift + 1));
+        return self.ext;
     }
 
     // unixSec returns the time's seconds since Jan 1 1970 (Unix time).
@@ -70,14 +67,7 @@ pub const Time = struct {
     }
 
     fn addSec(self: *Time, d: i64) void {
-        const s = @intCast(i64, self.wall << 1 >> (nsecShift + 1));
-        const dsec = s + d;
-        //FIXME:
-        // 8589934591 is hard coded , the go expression is 1<<33-1
-        if (0 <= dsec and dsec <= 8589934591) {
-            self.wall = (self.wall & nsecMask) | @intCast(u64, dsec << nsecShift);
-            return;
-        }
+        self.ext += d;
     }
 
     pub fn isZero(self: Time) bool {
