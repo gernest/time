@@ -136,10 +136,9 @@ pub const DateDetail = struct {
 fn absDate(abs: u64, full: bool) DateDetail {
     var details: DateDetail = undefined;
     // Split into time and day.
-    var d = @divExact(abs, secondsPerDay);
-
+    var d = abs / secondsPerDay;
     // Account for 400 year cycles.
-    var n = @divExact(d, daysPer100Years);
+    var n = d / daysPer400Years;
     var y = 400 * n;
     d -= daysPer400Years * n;
 
@@ -147,7 +146,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
     // The last cycle has one extra leap year, so on the last day
     // of that year, day / daysPer100Years will be 4 instead of 3.
     // Cut it back down to 3 by subtracting n>>2.
-    n = @divExact(d, daysPer100Years);
+    n = d / daysPer100Years;
     n -= n >> 2;
     y += 100 * n;
     d -= daysPer100Years * n;
@@ -155,7 +154,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
     // Cut off 4-year cycles.
     // The last cycle has a missing leap year, which does not
     // affect the computation.
-    n = @divExact(d, daysPer4Years);
+    n = d / daysPer4Years;
     y += 4 * n;
     d -= daysPer4Years * n;
 
@@ -163,7 +162,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
     // The last year is a leap year, so on the last day of that year,
     // day / 365 will be 4 instead of 3. Cut it back down to 3
     // by subtracting n>>2.
-    n = @divExact(d, 365);
+    n = d / 365;
     n -= n >> 2;
     y += n;
     d -= 365 * n;
@@ -187,8 +186,8 @@ fn absDate(abs: u64, full: bool) DateDetail {
 
     // Estimate month on assumption that every month has 31 days.
     // The estimate may be too low by at most one month, so adjust.
-    var month = @divExact(details.day, 31);
-    const end = daysBefore[@intCast(usize, month + 1)];
+    var month = @intCast(usize, details.day) / usize(32);
+    const end = daysBefore[month + 1];
     var begin: isize = 0;
     if (details.day >= end) {
         month += 1;
