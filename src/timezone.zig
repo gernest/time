@@ -95,13 +95,14 @@ const dataIO = struct {
         return d.n - pos;
     }
 
-    fn big4(d: *dataIO) !usize {
+    fn big4(d: *dataIO) !i32 {
         var p: [4]u8 = undefined;
         const size = d.read(p[0..]);
         if (size < 4) {
             return error.BadData;
         }
-        return @intCast(usize, p[3]) | (@intCast(usize, p[2]) << 8) | (@intCast(usize, p[1]) << 16) | (@intCast(usize, p[0]) << 24);
+        const o = @intCast(i32, p[3]) | (@intCast(i32, p[2]) << 8) | (@intCast(i32, p[1]) << 16) | (@intCast(i32, p[0]) << 24);
+        return o;
     }
 
     // advances the cursor by n. next read will start after skipping the n bytes.
