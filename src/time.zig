@@ -51,10 +51,16 @@ pub const Time = struct {
     loc: ?*Loacation,
 
     fn nsec(self: *Time) i32 {
+        if (self.wall == 0) {
+            return 0;
+        }
         return @intCast(i32, self.wall & nsecMask);
     }
 
     fn sec(self: *Time) i64 {
+        if (self.wall == 0) {
+            return 0;
+        }
         return wallToInternal + @intCast(i64, self.wall << 1 >> (nsecShift + 1));
     }
 
@@ -73,7 +79,16 @@ pub const Time = struct {
             return;
         }
     }
+
+    pub fn isZero(self: *Time) bool {
+        return self.sec() == 0 and self.nsec() == 0;
+    }
 };
+
+test "isszero" {
+    var t: Time = undefined;
+    debug.warn("{}\n", t.isZero());
+}
 
 pub const Month = enum(usize) {
     January,
