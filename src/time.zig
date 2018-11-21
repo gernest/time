@@ -98,11 +98,6 @@ pub const Time = struct {
     }
 };
 
-test "isszero" {
-    var t: Time = undefined;
-    debug.warn("{}\n", t.isZero());
-}
-
 pub const Month = enum(usize) {
     January,
     February,
@@ -137,6 +132,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
     var details: DateDetail = undefined;
     // Split into time and day.
     var d = abs / secondsPerDay;
+
     // Account for 400 year cycles.
     var n = d / daysPer400Years;
     var y = 400 * n;
@@ -193,11 +189,11 @@ fn absDate(abs: u64, full: bool) DateDetail {
         month += 1;
         begin = end;
     } else {
-        begin = daysBefore[@intCast(usize, month)];
+        begin = daysBefore[month];
     }
     month += 1;
     details.day = details.day - begin + 1;
-    details.month = @intToEnum(Month, @intCast(usize, month));
+    details.month = @intToEnum(Month, month);
     return details;
 }
 
@@ -221,15 +217,6 @@ const daysBefore = []isize{
 };
 fn isLeap(year: isize) bool {
     return @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 100) == 0);
-}
-
-test "leap" {
-    const y = isize(1989);
-    debug.warn("{}  leap year {}\n ", y, isLeap(y));
-}
-
-test "month" {
-    debug.warn("{}\n", Month.January.string());
 }
 
 const months = [][]const u8{
@@ -265,10 +252,6 @@ pub const Weekday = enum(usize) {
     }
 };
 
-test "days" {
-    debug.warn("{}\n", Weekday.Monday.string());
-}
-
 const days = [][]const u8{
     "Sunday",
     "Monday",
@@ -289,11 +272,6 @@ pub fn now() Time {
 
 test "now" {
     var ts = now();
-    debug.warn("{}\n", ts);
-    debug.warn("{} nsec\n", ts.nsec());
-    debug.warn("{} sec\n", ts.sec());
-    debug.warn("{} unix_sec\n", ts.unixSec());
-    debug.warn("{} abs\n", ts.abs());
     debug.warn("date {}\n", ts.date());
 }
 
