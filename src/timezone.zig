@@ -53,9 +53,6 @@ const zone = struct {
     is_dst: bool,
 };
 
-const zoneList = std.ArrayList(zone);
-const zoneTransList = std.ArrayList(zoneTrans);
-
 const zoneTrans = struct {
     when: i64,
     index: usize,
