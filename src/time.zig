@@ -62,6 +62,59 @@ pub const Time = struct {
     fn unixSec(self: *Time) i64 {
         return self.sec() + internalToUnix;
     }
+
+    fn addSec(self: *Time, d: i64) void {
+        const s = @intCast(i64, self.wall << 1 >> (nsecShift + 1));
+        const dsec = s + d;
+        //FIXME:
+        // 8589934591 is hard coded , the go expression is 1<<33-1
+        if (0 <= dsec and dsec <= 8589934591) {
+            self.wall = (self.wall & nsecMask) | @intCast(u64, dsec << nsecShift);
+            return;
+        }
+    }
+};
+
+pub const Month = enum(usize) {
+    January,
+    February,
+    March,
+    April,
+    May,
+    June,
+    July,
+    August,
+    September,
+    October,
+    November,
+    December,
+
+    pub fn string(self: Month) []const u8 {
+        const m = @enumToInt(self);
+        if (m <= @enumToInt(Month.January) and m <= @enumToInt(Month.December)) {
+            return months[@enumToInt(self)];
+        }
+        unreachable;
+    }
+};
+
+test "month" {
+    debug.warn("{}\n", Month.January.string());
+}
+
+const months = [][]const u8{
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 };
 
 pub const Loacation = struct {};
