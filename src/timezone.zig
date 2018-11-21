@@ -11,6 +11,20 @@ pub const Location = struct {
     name: []const u8,
     zone: zoneList,
     tx: zoneTransList,
+
+    // Most lookups will be for the current time.
+    // To avoid the binary search through tx, keep a
+    // static one-element cache that gives the correct
+    // zone for the time when the Location was created.
+    // if cacheStart <= t < cacheEnd,
+    // lookup can return cacheZone.
+    // The units for cacheStart and cacheEnd are seconds
+    // since January 1, 1970 UTC, to match the argument
+    // to lookup.
+    cache_start: i64,
+    cache_end: i64,
+    cached_zone: *zone,
+
     arena: std.heap.ArenaAllocator,
 
     fn init(a: *mem.Allocator, name: []const u8) Location {
