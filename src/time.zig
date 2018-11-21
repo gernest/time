@@ -92,6 +92,10 @@ pub const Time = struct {
         const usec = self.unixSec();
         return @intCast(u64, usec + (unixToInternal + internalToAbsolute));
     }
+
+    pub fn date(self: Time) DateDetail {
+        return absDate(self.abs(), true);
+    }
 };
 
 test "isszero" {
@@ -129,6 +133,93 @@ pub const DateDetail = struct {
     yday: isize,
 };
 
+fn absDate(abs: u64, full: bool) DateDetail {
+    var details: DateDetail = undefined;
+    // Split into time and day.
+    var d = @divExact(abs, secondsPerDay);
+
+    // Account for 400 year cycles.
+    var n = @divExact(d, daysPer100Years);
+    var y = 400 * n;
+    d -= daysPer400Years * n;
+
+    // Cut off 100-year cycles.
+    // The last cycle has one extra leap year, so on the last day
+    // of that year, day / daysPer100Years will be 4 instead of 3.
+    // Cut it back down to 3 by subtracting n>>2.
+    n = @divExact(d, daysPer100Years);
+    n -= n >> 2;
+    y += 100 * n;
+    d -= daysPer100Years * n;
+
+    // Cut off 4-year cycles.
+    // The last cycle has a missing leap year, which does not
+    // affect the computation.
+    n = @divExact(d, daysPer4Years);
+    y += 4 * n;
+    d -= daysPer4Years * n;
+
+    // Cut off years within a 4-year cycle.
+    // The last year is a leap year, so on the last day of that year,
+    // day / 365 will be 4 instead of 3. Cut it back down to 3
+    // by subtracting n>>2.
+    n = @divExact(d, 365);
+    n -= n >> 2;
+    y += n;
+    d -= 365 * n;
+    details.year = @intCast(isize, @intCast(i64, y) + absoluteZeroYear);
+    details.yday = @intCast(isize, d);
+    if (!full) {
+        return details;
+    }
+    details.day = details.yday;
+    if (isLeap(details.year)) {
+        if (details.day > (31 + 29 - 1)) {
+            // After leap day; pretend it wasn't there.
+            details.day -= 1;
+        } else if (details.day == (31 + 29 - 1)) {
+            // Leap day.
+            details.month = Month.February;
+            details.day = 29;
+            return details;
+        }
+    }
+
+    // Estimate month on assumption that every month has 31 days.
+    // The estimate may be too low by at most one month, so adjust.
+    var month = @divExact(details.day, 31);
+    const end = daysBefore[@intCast(usize, month + 1)];
+    var begin: isize = 0;
+    if (details.day >= end) {
+        month += 1;
+        begin = end;
+    } else {
+        begin = daysBefore[@intCast(usize, month)];
+    }
+    month += 1;
+    details.day = details.day - begin + 1;
+    details.month = @intToEnum(Month, @intCast(usize, month));
+    return details;
+}
+
+// daysBefore[m] counts the number of days in a non-leap year
+// before month m begins. There is an entry for m=12, counting
+// the number of days before January of next year (365).
+const daysBefore = []isize{
+    0,
+    31,
+    31 + 28,
+    31 + 28 + 31,
+    31 + 28 + 31 + 30,
+    31 + 28 + 31 + 30 + 31,
+    31 + 28 + 31 + 30 + 31 + 30,
+    31 + 28 + 31 + 30 + 31 + 30 + 31,
+    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+};
 fn isLeap(year: isize) bool {
     return @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 100) == 0);
 }
@@ -204,6 +295,7 @@ test "now" {
     debug.warn("{} sec\n", ts.sec());
     debug.warn("{} unix_sec\n", ts.unixSec());
     debug.warn("{} abs\n", ts.abs());
+    debug.warn("date {}\n", ts.date());
 }
 
 const bintime = struct {
