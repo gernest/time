@@ -122,6 +122,22 @@ pub const Month = enum(usize) {
     }
 };
 
+pub const DateDetail = struct {
+    year: isize,
+    month: Month,
+    day: isize,
+    yday: isize,
+};
+
+fn isLeap(year: isize) bool {
+    return @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 100) == 0);
+}
+
+test "leap" {
+    const y = isize(1989);
+    debug.warn("{}  leap year {}\n ", y, isLeap(y));
+}
+
 test "month" {
     debug.warn("{}\n", Month.January.string());
 }
