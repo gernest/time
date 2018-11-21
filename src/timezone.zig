@@ -271,8 +271,30 @@ const unix_sources = [][]const u8{
 
 // readFile reads contents of a file with path and writes the read bytes to buf.
 fn readFile(path: []const u8, buf: *std.Buffer) !void {
-    var file = std.File.openRead(path);
+    var file = try std.os.File.openRead(path);
     defer file.close();
-    var stream = &file.inStream();
+    var stream = &file.inStream().stream;
     try stream.readAllBuffer(buf, max_file_size);
+}
+
+fn loadLocationFile(name: []const u8, buf: *std.Buffer) !void {
+    var tmp = try std.Buffer.init(buf.list.allocator, "");
+    defer tmp.deinit();
+    for (unix_sources) |source| {
+        try buf.resize(0);
+        try tmp.append(source);
+        try tmp.append("/");
+        try tmp.append(name);
+        if (readFile(tmp.toSliceConst(), buf)) {} else |err| {
+            continue;
+        }
+        return;
+    }
+    return error.MissingZoneFile;
+}
+
+test "readFile" {
+    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+    try loadLocationFile("Asia/Jerusalem", &buf);
 }
