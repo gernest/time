@@ -199,7 +199,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     _ = d.read(isstd);
 
     var isutc = try arena_allocator.alloc(u8, n[@enumToInt(n_value.UTCLocal)]);
-    size = d.read(isstd);
+    size = d.read(isutc);
     if (size == 0) {
         return error.BadData;
     }
