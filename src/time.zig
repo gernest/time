@@ -92,7 +92,7 @@ pub const Month = enum(usize) {
     pub fn string(self: Month) []const u8 {
         const m = @enumToInt(self);
         if (m <= @enumToInt(Month.January) and m <= @enumToInt(Month.December)) {
-            return months[@enumToInt(self)];
+            return months[m];
         }
         unreachable;
     }
@@ -115,6 +115,38 @@ const months = [][]const u8{
     "October",
     "November",
     "December",
+};
+
+pub const Weekday = enum(usize) {
+    Sunday,
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+
+    pub fn string(self: Weekday) []const u8 {
+        const d = @enumToInt(self);
+        if (@enumToInt(Weekday.Sunday) <= d and d <= @enumToInt(Weekday.Saturday)) {
+            return days[d];
+        }
+        unreachable;
+    }
+};
+
+test "days" {
+    debug.warn("{}\n", Weekday.Monday.string());
+}
+
+const days = [][]const u8{
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
 };
 
 pub const Loacation = struct {};
