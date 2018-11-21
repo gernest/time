@@ -50,14 +50,14 @@ pub const Time = struct {
     ext: i64,
     loc: ?*Loacation,
 
-    fn nsec(self: *Time) i32 {
+    fn nsec(self: Time) i32 {
         if (self.wall == 0) {
             return 0;
         }
         return @intCast(i32, self.wall & nsecMask);
     }
 
-    fn sec(self: *Time) i64 {
+    fn sec(self: Time) i64 {
         if (self.wall == 0) {
             return 0;
         }
@@ -65,7 +65,7 @@ pub const Time = struct {
     }
 
     // unixSec returns the time's seconds since Jan 1 1970 (Unix time).
-    fn unixSec(self: *Time) i64 {
+    fn unixSec(self: Time) i64 {
         return self.sec() + internalToUnix;
     }
 
@@ -80,8 +80,14 @@ pub const Time = struct {
         }
     }
 
-    pub fn isZero(self: *Time) bool {
+    pub fn isZero(self: Time) bool {
         return self.sec() == 0 and self.nsec() == 0;
+    }
+
+    pub fn after(self: Time, u: Time) bool {
+        const ts = self.sec();
+        const us = u.sec();
+        return ts > us or (ts == us and self.nsec() > u.nsec());
     }
 };
 
