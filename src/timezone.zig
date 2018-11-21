@@ -7,6 +7,8 @@ const std = @import("std");
 const mem = std.mem;
 const warn = std.debug.warn;
 
+const max_file_size: usize = 10 << 20;
+
 pub const Location = struct {
     name: []const u8,
     zone: zoneList,
@@ -21,9 +23,9 @@ pub const Location = struct {
     // The units for cacheStart and cacheEnd are seconds
     // since January 1, 1970 UTC, to match the argument
     // to lookup.
-    cache_start: i64,
-    cache_end: i64,
-    cached_zone: *zone,
+    cache_start: ?i64,
+    cache_end: ?i64,
+    cached_zone: ?*zone,
 
     arena: std.heap.ArenaAllocator,
 
@@ -33,6 +35,9 @@ pub const Location = struct {
             .name = name,
             .zone = zoneList.init(&arena.allocator),
             .tx = zoneTransList.init(&arena.allocator),
+            .cache_start = null,
+            .cache_end = null,
+            .cached_zone = null,
         };
     }
 
@@ -263,3 +268,11 @@ const unix_sources = [][]const u8{
     "/usr/share/lib/zoneinfo/",
     "/usr/lib/locale/TZ/",
 };
+
+// readFile reads contents of a file with path and writes the read bytes to buf.
+fn readFile(path: []const u8, buf: *std.Buffer) !void {
+    var file = std.File.openRead(path);
+    defer file.close();
+    var stream = &file.inStream();
+    try stream.readAllBuffer(buf, max_file_size);
+}
