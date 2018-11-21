@@ -35,13 +35,14 @@ pub const Location = struct {
             .name = name,
             .zone = zoneList.init(&arena.allocator),
             .tx = zoneTransList.init(&arena.allocator),
+            .arena = arena,
             .cache_start = null,
             .cache_end = null,
             .cached_zone = null,
         };
     }
 
-    fn deinit(self: Location) void {
+    fn deinit(self: *Location) void {
         self.arena.deinit();
     }
 };
@@ -104,7 +105,7 @@ const dataIO = struct {
     }
 
     // advances the cursor by n. next read will start after skipping the n bytes.
-    fn skip(d: *dataIO, n: usize) !void {
+    fn skip(d: *dataIO, n: usize) void {
         d.n += n;
     }
 
@@ -130,9 +131,8 @@ fn byteString(x: []u8) []u8 {
 pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !Location {
     var arena = std.heap.ArenaAllocator.init(a);
     var arena_allocator = &arena.allocator;
-    defer arena_allocator.deinit();
-    errdefer arena_allocator.deinit();
-
+    defer arena.deinit();
+    errdefer arena.deinit();
     var d = &dataIO.init(data);
     var magic: [4]u8 = undefined;
     var size = d.read(magic[0..]);
@@ -164,11 +164,11 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
         Char,
     };
 
-    var n: [6]isize = undefined;
+    var n: [6]usize = undefined;
     var i: usize = 0;
     while (i < 6) : (i += 1) {
         const nn = try d.big4();
-        n[i] = @intCast(isize, nn);
+        n[i] = @intCast(usize, nn);
     }
 
     // Transition times.
@@ -195,11 +195,11 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
 
     // Whether tx times associated with local time types
     // are specified as standard time or wall time.
-    var isstd = try arena_allocator.alloc(u8, n[@enumToInt(n_value.StdWall)]);
+    var isstd = try arena_allocator.alloc(u8, n[@enumToInt(n_value.STDWall)]);
     _ = d.read(isstd);
 
-    var isutc = try arena_allocator.alloc(u8, n[@enumToInt(n_value.StdWall)]);
-    var size = d.read(isstd);
+    var isutc = try arena_allocator.alloc(u8, n[@enumToInt(n_value.UTCLocal)]);
+    size = d.read(isstd);
     if (size == 0) {
         return error.BadData;
     }
@@ -214,7 +214,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
     // Now we can build up a useful data structure.
     // First the zone information.
     //utcoff[4] isdst[1] nameindex[1]
-    var i: usize = 0;
+    i = 0;
     while (i < n[@enumToInt(n_value.Zone)]) : (i += 1) {
         const zn = try zone_data.big4();
         const b = try zone_data.byte();
@@ -223,7 +223,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
         z.is_dst = b != 0;
 
         const b2 = try zone_data.byte();
-        if (@intCase(usize, b2) >= abbrev.len) {
+        if (@intCast(usize, b2) >= abbrev.len) {
             return error.BadData;
         }
         const cn = byteString(abbrev[b2..]);
@@ -296,5 +296,8 @@ fn loadLocationFile(name: []const u8, buf: *std.Buffer) !void {
 test "readFile" {
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
-    try loadLocationFile("Asia/Jerusalem", &buf);
+
+    const name = "Asia/Jerusalem";
+    try loadLocationFile(name, &buf);
+    _ = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
 }
