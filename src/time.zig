@@ -191,7 +191,6 @@ fn absDate(abs: u64, full: bool) DateDetail {
     } else {
         begin = daysBefore[month];
     }
-    month += 1;
     details.day = details.day - begin + 1;
     details.month = @intToEnum(Month, month);
     return details;
