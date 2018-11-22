@@ -35,7 +35,7 @@ const wallToInternal: i64 = (1884 * 365 + 1884 / 4 - 1884 / 100 + 1884 / 400) * 
 const internalToWall: i64 = -wallToInternal;
 
 const hasMonotonic = 1 << 63;
-const maxWall = wallToInternal + (1 << 33 - 1); // year 2157
+const maxWall = wallToInternal + ((1 << 33) - 1); // year 2157
 const minWall = wallToInternal; // year 1885
 
 // FIXME: Zig comiler was complainit when give 1 << 30 - 1 expression. I'm not a
@@ -381,6 +381,8 @@ test "now" {
     debug.warn("week {}\n", ts.weekday());
     debug.warn("isoWeek {}\n", ts.isoWeek());
     debug.warn("clock {}\n", ts.clock());
+    debug.warn("maxWall {}\n", maxWall);
+    debug.warn("wallToInternal {}\n", wallToInternal);
 }
 
 const bintime = struct {
