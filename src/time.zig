@@ -171,12 +171,31 @@ pub const Time = struct {
         }
         return ISOWeek{ .year = d.year, .week = week };
     }
+
+    pub fn clock(self: Time) Clock {
+        return Clock.absClock(self.abs());
+    }
 };
 
 /// ISO 8601 year and week number
 pub const ISOWeek = struct {
     year: isize,
     week: isize,
+};
+
+pub const Clock = struct {
+    hour: isize,
+    min: isize,
+    sec: isize,
+
+    fn absClock(abs: u64) Clock {
+        var sec = @intCast(isize, abs % secondsPerDay);
+        var hour = @divTrunc(sec, secondsPerHour);
+        sec -= (hour * secondsPerHour);
+        var min = @divTrunc(sec, secondsPerMinute);
+        sec -= (min * secondsPerMinute);
+        return Clock{ .hour = hour, .min = min, .sec = sec };
+    }
 };
 
 fn absWeekday(abs: u64) Weekday {
@@ -361,6 +380,7 @@ test "now" {
     debug.warn("date {}\n", ts.date());
     debug.warn("week {}\n", ts.weekday());
     debug.warn("isoWeek {}\n", ts.isoWeek());
+    debug.warn("clock {}\n", ts.clock());
 }
 
 const bintime = struct {
