@@ -54,6 +54,9 @@ pub const Time = struct {
     }
 
     fn sec(self: Time) i64 {
+        if ((self.wall & hasMonotonic) != 0) {
+            return wallToInternal + @intCast(i64, self.wall << 1 >> (nsecShift + 1));
+        }
         return self.ext;
     }
 
@@ -367,8 +370,15 @@ pub const Loacation = struct {};
 
 pub fn now() Time {
     const bt = timeNow();
-    const sec = bt.sec + unixToInternal - minWall;
-    return Time{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
+    const sec = (bt.sec + unixToInternal) - minWall;
+    if ((@intCast(u64, sec) >> 33) != 0) {
+        return Time{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
+    }
+    return Time{
+        .wall = hasMonotonic | (@intCast(u64, sec) << nsecShift) | @intCast(u64, bt.nsec),
+        .ext = @intCast(i64, bt.mono),
+        .loc = null,
+    };
 }
 
 test "now" {
@@ -377,14 +387,12 @@ test "now" {
     debug.warn("week {}\n", ts.weekday());
     debug.warn("isoWeek {}\n", ts.isoWeek());
     debug.warn("clock {}\n", ts.clock());
-    debug.warn("maxWall {}\n", maxWall);
-    debug.warn("wallToInternal {}\n", wallToInternal);
-    debug.warn("wallToInternal {}\n", absoluteToInternal);
 }
 
 const bintime = struct {
     sec: isize,
     nsec: isize,
+    mono: u64,
 };
 
 fn timeNow() bintime {
@@ -393,14 +401,39 @@ fn timeNow() bintime {
             var ts: posix.timespec = undefined;
             const err = posix.clock_gettime(posix.CLOCK_REALTIME, &ts);
             debug.assert(err == 0);
-            return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec };
+            return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec, .mono = clockNative() };
         },
         Os.macosx, Os.ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
             debug.assert(err == 0);
-            return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec };
+            return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec, .mono = clockNative() };
         },
         else => @compileError("Unsupported OS"),
     }
+}
+
+const clockNative = switch (builtin.os) {
+    Os.windows => clockWindows,
+    Os.linux => clockLinux,
+    Os.macosx, Os.ios => clockDarwin,
+    else => @compileError("Unsupported OS"),
+};
+
+fn clockWindows() u64 {
+    var result: i64 = undefined;
+    var err = windows.QueryPerformanceCounter(&result);
+    debug.assert(err != windows.FALSE);
+    return @intCast(u64, result);
+}
+
+fn clockDarwin() u64 {
+    return darwin.mach_absolute_time();
+}
+
+fn clockLinux() u64 {
+    var ts: posix.timespec = undefined;
+    var result = posix.clock_gettime(monotonic_clock_id, &ts);
+    debug.assert(posix.getErrno(result) == 0);
+    return @intCast(u64, ts.tv_sec) * u64(1000000000) + @intCast(u64, ts.tv_nsec);
 }
