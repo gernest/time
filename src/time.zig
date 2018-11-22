@@ -101,6 +101,11 @@ pub const Time = struct {
         const d = self.date();
         return d.year;
     }
+
+    pub fn month(self: Time) Month {
+        const d = self.date();
+        return d.month;
+    }
 };
 
 pub const Month = enum(usize) {
