@@ -115,6 +115,68 @@ pub const Time = struct {
     pub fn weekday(self: Time) Weekday {
         return absWeekday(self.abs());
     }
+
+    /// isoWeek returns the ISO 8601 year and week number in which self occurs.
+    /// Week ranges from 1 to 53. Jan 01 to Jan 03 of year n might belong to
+    /// week 52 or 53 of year n-1, and Dec 29 to Dec 31 might belong to week 1
+    /// of year n+1.
+    pub fn isoWeek(self: Time) ISOWeek {
+        var d = self.date();
+        const wday = @mod(@intCast(isize, @enumToInt(self.weekday()) + 8), 7);
+        const Mon: isize = 0;
+        const Tue = Mon + 1;
+        const Wed = Tue + 1;
+        const Thu = Wed + 1;
+        const Fri = Thu + 1;
+        const Sat = Fri + 1;
+        const Sun = Sat + 1;
+
+        // Calculate week as number of Mondays in year up to
+        // and including today, plus 1 because the first week is week 0.
+        // Putting the + 1 inside the numerator as a + 7 keeps the
+        // numerator from being negative, which would cause it to
+        // round incorrectly.
+        var week = @divTrunc(d.yday - wday + 7, 7);
+
+        // The week number is now correct under the assumption
+        // that the first Monday of the year is in week 1.
+        // If Jan 1 is a Tuesday, Wednesday, or Thursday, the first Monday
+        // is actually in week 2.
+        const jan1wday = @mod((wday - d.yday + 7 * 53), 7);
+
+        if (Tue <= jan1wday and jan1wday <= Thu) {
+            week += 1;
+        }
+        if (week == 0) {
+            d.year -= 1;
+            week = 52;
+        }
+
+        // A year has 53 weeks when Jan 1 or Dec 31 is a Thursday,
+        // meaning Jan 1 of the next year is a Friday
+        // or it was a leap year and Jan 1 of the next year is a Saturday.
+        if (jan1wday == Fri or (jan1wday == Sat) and isLeap(d.year)) {
+            week += 1;
+        }
+
+        // December 29 to 31 are in week 1 of next year if
+        // they are after the last Thursday of the year and
+        // December 31 is a Monday, Tuesday, or Wednesday.
+        if (@enumToInt(d.month) == @enumToInt(Month.December) and d.day >= 29 and wday < Thu) {
+            const dec31wday = @mod((wday + 31 - d.day), 7);
+            if (Mon <= dec31wday and dec31wday <= Wed) {
+                d.year += 1;
+                week = 1;
+            }
+        }
+        return ISOWeek{ .year = d.year, .week = week };
+    }
+};
+
+/// ISO 8601 year and week number
+pub const ISOWeek = struct {
+    year: isize,
+    week: isize,
 };
 
 fn absWeekday(abs: u64) Weekday {
@@ -298,6 +360,7 @@ test "now" {
     var ts = now();
     debug.warn("date {}\n", ts.date());
     debug.warn("week {}\n", ts.weekday());
+    debug.warn("isoWeek {}\n", ts.isoWeek());
 }
 
 const bintime = struct {
