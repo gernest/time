@@ -38,11 +38,7 @@ const hasMonotonic = 1 << 63;
 const maxWall = wallToInternal + ((1 << 33) - 1); // year 2157
 const minWall = wallToInternal; // year 1885
 
-// FIXME: Zig comiler was complainit when give 1 << 30 - 1 expression. I'm not a
-// zig wizard yet, and I need to get over with this so I am hardcoding the value
-// for now.
-// const nsecMask = 1 << 30 - 1;
-const nsecMask: u64 = 1073741823;
+const nsecMask: u64 = (1 << 30) - 1;
 const nsecShift = 30;
 
 pub const Time = struct {
