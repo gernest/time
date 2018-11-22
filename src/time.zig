@@ -96,6 +96,11 @@ pub const Time = struct {
     pub fn date(self: Time) DateDetail {
         return absDate(self.abs(), true);
     }
+
+    pub fn year(self: Time) isize {
+        const d = self.date();
+        return d.year;
+    }
 };
 
 pub const Month = enum(usize) {
