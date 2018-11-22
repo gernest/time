@@ -106,7 +106,22 @@ pub const Time = struct {
         const d = self.date();
         return d.month;
     }
+
+    pub fn day(self: Time) isize {
+        const d = self.date();
+        return d.day;
+    }
+
+    pub fn weekday(self: Time) Weekday {
+        return absWeekday(self.abs());
+    }
 };
+
+fn absWeekday(abs: u64) Weekday {
+    const s = @mod(abs + @intCast(u64, @enumToInt(Weekday.Monday)) * secondsPerDay, secondsPerWeek);
+    const w = s / secondsPerDay;
+    return @intToEnum(Weekday, @intCast(usize, w));
+}
 
 pub const Month = enum(usize) {
     January,
@@ -282,6 +297,7 @@ pub fn now() Time {
 test "now" {
     var ts = now();
     debug.warn("date {}\n", ts.date());
+    debug.warn("week {}\n", ts.weekday());
 }
 
 const bintime = struct {
