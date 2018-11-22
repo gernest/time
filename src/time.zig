@@ -25,7 +25,7 @@ const absoluteZeroYear: i64 = -292277022399;
 const internalYear: i64 = 1;
 
 // Offsets to convert between internal and absolute or Unix times.
-const absoluteToInternal: i64 = @floatToInt(i64, @intToFloat(f64, absoluteZeroYear - internalYear) * 365.2425 * @intToFloat(f64, secondsPerDay));
+const absoluteToInternal: i64 = (absoluteZeroYear - internalYear) * @floatToInt(i64, 365.2425 * @intToFloat(f64, secondsPerDay));
 const internalToAbsolute = -absoluteToInternal;
 
 const unixToInternal: i64 = (1969 * 365 + 1969 / 4 - 1969 / 100 + 1969 / 400) * secondsPerDay;
@@ -379,6 +379,7 @@ test "now" {
     debug.warn("clock {}\n", ts.clock());
     debug.warn("maxWall {}\n", maxWall);
     debug.warn("wallToInternal {}\n", wallToInternal);
+    debug.warn("wallToInternal {}\n", absoluteToInternal);
 }
 
 const bintime = struct {
