@@ -64,6 +64,13 @@ const zoneTrans = struct {
     is_utc: bool,
 };
 
+pub const zoneDetails = struct {
+    name: []const u8,
+    offse: isize,
+    start: i64,
+    end: i64,
+};
+
 // alpha and omega are the beginning and end of time for zone
 // transitions.
 const alpha: i64 = -1 << 63;
