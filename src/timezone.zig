@@ -49,6 +49,17 @@ pub const Location = struct {
     fn deinit(self: *Location) void {
         self.arena.deinit();
     }
+
+    pub fn lookup(self: *Location, sec: i64) zoneDetails {
+        if (self.zone == null or self.zone.?.len == 0) {
+            return zoneDetails{
+                .name = "UTC",
+                .offset = 0,
+                .start = alpha,
+                .end = omega,
+            };
+        }
+    }
 };
 
 const zone = struct {
