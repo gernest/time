@@ -193,6 +193,12 @@ pub const Time = struct {
     pub fn minute(self: Time) isize {
         return @divTrunc(@intCast(isize, self.abs() % secondsPerHour), secondsPerMinute);
     }
+
+    /// second returns the second offset within the minute specified by t, in the
+    /// range [0, 59].
+    pub fn second(self: Time) isize {
+        return @intCast(isize, self.abs() % secondsPerMinute);
+    }
 };
 
 /// ISO 8601 year and week number
@@ -424,6 +430,7 @@ test "now" {
     debug.warn("clock {}\n", ts.clock());
     debug.warn("hour {}\n", ts.hour());
     debug.warn("minute {}\n", ts.minute());
+    debug.warn("second {}\n", ts.second());
 }
 
 const bintime = struct {
