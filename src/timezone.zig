@@ -166,6 +166,38 @@ pub const Location = struct {
             };
         }
     }
+
+    /// lookupName returns information about the time zone with
+    /// the given name (such as "EST") at the given pseudo-Unix time
+    /// (what the given time of day would be in UTC).
+    pub fn lookupName(self: *Location, name: []const u8, unix: i64) !isize {
+        // First try for a zone with the right name that was actually
+        // in effect at the given time. (In Sydney, Australia, both standard
+        // and daylight-savings time are abbreviated "EST". Using the
+        // offset helps us pick the right one for the given time.
+        // It's not perfect: during the backward transition we might pick
+        // either one.)
+        if (self.zone) |zone| {
+            for (zone) |*z| {
+                if (mem.eql(u8, z.name, name)) {
+                    const d = self.lookup(unix - @intCast(i64, z.offset));
+                    if (mem.eql(d.name, z.name)) {
+                        return d.offset;
+                    }
+                }
+            }
+        }
+
+        // Otherwise fall back to an ordinary name match.
+        if (self.zone) |zone| {
+            for (zone) |*z| {
+                if (mem.eql(u8, z.name, name)) {
+                    return z.offset;
+                }
+            }
+        }
+        return error.ZoneNotFound;
+    }
 };
 
 const zone = struct {
