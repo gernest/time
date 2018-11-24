@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const timezone = @import("timezone.zig");
 const Os = builtin.Os;
 const debug = std.debug;
 
@@ -44,7 +45,7 @@ const nsecShift = 30;
 pub const Time = struct {
     wall: u64,
     ext: i64,
-    loc: ?*Loacation,
+    loc: ?*timezone.Location,
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -366,18 +367,20 @@ const days = [][]const u8{
     "Saturday",
 };
 
-pub const Loacation = struct {};
-
 pub fn now() Time {
     const bt = timeNow();
     const sec = (bt.sec + unixToInternal) - minWall;
     if ((@intCast(u64, sec) >> 33) != 0) {
-        return Time{ .wall = @intCast(u64, bt.nsec), .ext = sec + minWall, .loc = null };
+        return Time{
+            .wall = @intCast(u64, bt.nsec),
+            .ext = sec + minWall,
+            .loc = timezone.getLocal(),
+        };
     }
     return Time{
         .wall = hasMonotonic | (@intCast(u64, sec) << nsecShift) | @intCast(u64, bt.nsec),
         .ext = @intCast(i64, bt.mono),
-        .loc = null,
+        .loc = timezone.getLocal(),
     };
 }
 

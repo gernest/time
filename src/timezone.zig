@@ -12,8 +12,17 @@ const warn = std.debug.warn;
 const max_file_size: usize = 10 << 20;
 
 var dalloc = std.heap.DirectAllocator.init();
+const UTC = &utc_local;
 var utc_local = Location.init(&dalloc.allocator, "UTC");
-pub var local: *Location = &utc_local;
+pub var local: ?*Location = null;
+
+pub fn getLocal() ?*Location {
+    if (local != null) {
+        return local;
+    }
+    local = &initLocation();
+    return local;
+}
 
 pub const Location = struct {
     name: []const u8,
@@ -227,17 +236,12 @@ pub const zoneDetails = struct {
 const alpha: i64 = -1 << 63;
 const omega: i64 = 1 << 63 - 1;
 
-const UTC = &utc_location;
-var utc_location = Location.initName("UTC");
-var Local = &local_location;
-
-var local_location = initLocation();
-
 const initLocation = switch (builtin.os) {
     Os.linux => initLinux,
     Os.macosx, Os.ios => initDarwin,
     else => @compileError("Unsupported OS"),
 };
+
 test "initLocation" {
     var loc = initLocation();
     defer loc.deinit();
