@@ -61,6 +61,50 @@ pub const Location = struct {
         return false;
     }
 
+    // lookupFirstZone returns the index of the time zone to use for times
+    // before the first transition time, or when there are no transition
+    // times.
+    //
+    // The reference implementation in localtime.c from
+    // https://www.iana.org/time-zones/repository/releases/tzcode2013g.tar.gz
+    // implements the following algorithm for these cases:
+    // 1) If the first zone is unused by the transitions, use it.
+    // 2) Otherwise, if there are transition times, and the first
+    //    transition is to a zone in daylight time, find the first
+    //    non-daylight-time zone before and closest to the first transition
+    //    zone.
+    // 3) Otherwise, use the first zone that is not daylight time, if
+    //    there is one.
+    // 4) Otherwise, use the first zone.
+    pub fn lookupFirstZone(self: *Location) isize {
+        // Case 1.
+        if (!self.firstZoneUsed()) {
+            return 0;
+        }
+
+        // Case 2.
+        if (self.tx) |tx| {
+            if (tx.len > 0 and self.?.zone[tx[0].index].is_dst) {
+                var zi = @intCast(isize, tx[0].index);
+                while (z >= 0) : (zi -= 1) {
+                    if (!self.?.xone[@intCast(usize, zi)].is_dst) {
+                        return zi;
+                    }
+                }
+            }
+        }
+        // Case 3.
+        if (self.zone) |zone| {
+            for (zone) |z, idx| {
+                if (!z.is_dst) {
+                    return @intCast(isize, idx);
+                }
+            }
+        }
+        // Case 4.
+        return 0;
+    }
+
     pub fn lookup(self: *Location, sec: i64) zoneDetails {
         if (self.zone == null or self.zone.?.len == 0) {
             return zoneDetails{
