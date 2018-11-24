@@ -371,12 +371,20 @@ const days = [][]const u8{
     "Saturday",
 };
 
+/// now returns the current local time. This function is dog slow and expensive,
+/// because it will call timezone.getLocal() that loads system timezone data
+/// every time it is called (no cache).
+///
+/// Instead store timezone.getLocal() value somewhere and pass it to nowWithLoc
+/// for faster local time values.
 pub fn now() Time {
     const bt = timeNow();
     var local = timezone.getLocal();
     return nowWithLoc(local);
 }
 
+/// nowWithLoc returns the current local time and assigns the retuned time to use
+/// local as location data.
 pub fn nowWithLoc(local: timezone.Location) Time {
     const bt = timeNow();
     const sec = (bt.sec + unixToInternal) - minWall;
