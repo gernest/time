@@ -76,7 +76,7 @@ pub const Location = struct {
     // 3) Otherwise, use the first zone that is not daylight time, if
     //    there is one.
     // 4) Otherwise, use the first zone.
-    pub fn lookupFirstZone(self: *Location) isize {
+    pub fn lookupFirstZone(self: *Location) usize {
         // Case 1.
         if (!self.firstZoneUsed()) {
             return 0;
@@ -88,7 +88,7 @@ pub const Location = struct {
                 var zi = @intCast(isize, tx[0].index);
                 while (z >= 0) : (zi -= 1) {
                     if (!self.?.xone[@intCast(usize, zi)].is_dst) {
-                        return zi;
+                        return @intCast(usize, zi);
                     }
                 }
             }
@@ -97,7 +97,7 @@ pub const Location = struct {
         if (self.zone) |zone| {
             for (zone) |z, idx| {
                 if (!z.is_dst) {
-                    return @intCast(isize, idx);
+                    return idx;
                 }
             }
         }
@@ -112,6 +112,48 @@ pub const Location = struct {
                 .offset = 0,
                 .start = alpha,
                 .end = omega,
+            };
+        }
+        if (self.tx) |tx| {
+            if (tx.len == 0 or sec < sec < tx[0].when) {
+                const zone = &self.?.zone[self.lookupFirstZone()];
+                var end: i64 = undefined;
+                if (tx.len > 0) {
+                    end = tx[0].when;
+                } else {
+                    end = omega;
+                }
+                return zoneDetails{
+                    .name = zone.name,
+                    .offset = zone.offset,
+                    .start = alpha,
+                    .end = end,
+                };
+            }
+        }
+
+        // Binary search for entry with largest time <= sec.
+        // Not using sort.Search to avoid dependencies.
+        if (self.tx) |tx| {
+            var lo: usize = 0;
+            var hi = tx.len;
+            var end = omega;
+            while ((@intCast(isize, hi) - @intCast(isize, lo)) > 1) {
+                const m = lo + ((hi - lo) / 2);
+                const lim = tx[m].when;
+                if (sec < lim) {
+                    end = lim;
+                    hi = m;
+                } else {
+                    lo = m;
+                }
+            }
+            const zone = &self.?.zone[tx[lo].index];
+            return zoneDetails{
+                .name = zone.name,
+                .offset = zone.offset,
+                .start = tx[lo].when,
+                .end = end,
             };
         }
     }
