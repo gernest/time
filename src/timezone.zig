@@ -14,14 +14,9 @@ const max_file_size: usize = 10 << 20;
 var dalloc = std.heap.DirectAllocator.init();
 const UTC = &utc_local;
 var utc_local = Location.init(&dalloc.allocator, "UTC");
-pub var local: ?*Location = null;
 
-pub fn getLocal() ?*Location {
-    if (local != null) {
-        return local;
-    }
-    local = &initLocation();
-    return local;
+pub fn getLocal() Location {
+    return initLocation();
 }
 
 pub const Location = struct {
@@ -63,7 +58,7 @@ pub const Location = struct {
 
     /// firstZoneUsed returns whether the first zone is used by some
     /// transition.
-    pub fn firstZoneUsed(self: *Location) bool {
+    pub fn firstZoneUsed(self: *const Location) bool {
         if (self.tx) |tx| {
             for (tx) |value| {
                 if (value.index == 0) {
@@ -89,7 +84,7 @@ pub const Location = struct {
     // 3) Otherwise, use the first zone that is not daylight time, if
     //    there is one.
     // 4) Otherwise, use the first zone.
-    pub fn lookupFirstZone(self: *Location) usize {
+    pub fn lookupFirstZone(self: *const Location) usize {
         // Case 1.
         if (!self.firstZoneUsed()) {
             return 0;
@@ -97,18 +92,18 @@ pub const Location = struct {
 
         // Case 2.
         if (self.tx) |tx| {
-            if (tx.len > 0 and self.?.zone[tx[0].index].is_dst) {
+            if (tx.len > 0 and self.zone.?[tx[0].index].is_dst) {
                 var zi = @intCast(isize, tx[0].index);
-                while (z >= 0) : (zi -= 1) {
-                    if (!self.?.xone[@intCast(usize, zi)].is_dst) {
+                while (zi >= 0) : (zi -= 1) {
+                    if (!self.zone.?[@intCast(usize, zi)].is_dst) {
                         return @intCast(usize, zi);
                     }
                 }
             }
         }
         // Case 3.
-        if (self.zone) |zone| {
-            for (zone) |z, idx| {
+        if (self.zone) |tzone| {
+            for (tzone) |z, idx| {
                 if (!z.is_dst) {
                     return idx;
                 }
@@ -125,8 +120,8 @@ pub const Location = struct {
     /// the start and end times bracketing sec when that zone is in effect,
     /// the offset in seconds east of UTC (such as -5*60*60), and whether
     /// the daylight savings is being observed at that time.
-    pub fn lookup(self: *Location, sec: i64) zoneDetails {
-        if (self.zone == null or self.zone.?.len == 0) {
+    pub fn lookup(self: *const Location, sec: i64) zoneDetails {
+        if (self.zone == null) {
             return zoneDetails{
                 .name = "UTC",
                 .offset = 0,
@@ -135,8 +130,8 @@ pub const Location = struct {
             };
         }
         if (self.tx) |tx| {
-            if (tx.len == 0 or sec < sec < tx[0].when) {
-                const zone = &self.?.zone[self.lookupFirstZone()];
+            if (tx.len == 0 or sec < tx[0].when) {
+                const tzone = &self.zone.?[self.lookupFirstZone()];
                 var end: i64 = undefined;
                 if (tx.len > 0) {
                     end = tx[0].when;
@@ -144,8 +139,8 @@ pub const Location = struct {
                     end = omega;
                 }
                 return zoneDetails{
-                    .name = zone.name,
-                    .offset = zone.offset,
+                    .name = tzone.name,
+                    .offset = tzone.offset,
                     .start = alpha,
                     .end = end,
                 };
@@ -154,28 +149,26 @@ pub const Location = struct {
 
         // Binary search for entry with largest time <= sec.
         // Not using sort.Search to avoid dependencies.
-        if (self.tx) |tx| {
-            var lo: usize = 0;
-            var hi = tx.len;
-            var end = omega;
-            while ((@intCast(isize, hi) - @intCast(isize, lo)) > 1) {
-                const m = lo + ((hi - lo) / 2);
-                const lim = tx[m].when;
-                if (sec < lim) {
-                    end = lim;
-                    hi = m;
-                } else {
-                    lo = m;
-                }
+        var lo: usize = 0;
+        var hi = self.tx.?.len;
+        var end = omega;
+        while ((hi - lo) > 1) {
+            const m = lo + ((hi - lo) / 2);
+            const lim = self.tx.?[m].when;
+            if (sec < lim) {
+                end = lim;
+                hi = m;
+            } else {
+                lo = m;
             }
-            const zone = &self.?.zone[tx[lo].index];
-            return zoneDetails{
-                .name = zone.name,
-                .offset = zone.offset,
-                .start = tx[lo].when,
-                .end = end,
-            };
         }
+        const tzone = &self.zone.?[self.tx.?[lo].index];
+        return zoneDetails{
+            .name = tzone.name,
+            .offset = tzone.offset,
+            .start = self.tx.?[lo].when,
+            .end = end,
+        };
     }
 
     /// lookupName returns information about the time zone with
@@ -226,7 +219,7 @@ const zoneTrans = struct {
 
 pub const zoneDetails = struct {
     name: []const u8,
-    offse: isize,
+    offset: isize,
     start: i64,
     end: i64,
 };
@@ -241,12 +234,6 @@ const initLocation = switch (builtin.os) {
     Os.macosx, Os.ios => initDarwin,
     else => @compileError("Unsupported OS"),
 };
-
-test "initLocation" {
-    var loc = initLocation();
-    defer loc.deinit();
-    warn("{}\n", loc.name);
-}
 
 fn initDarwin() Location {
     return initLinux();
@@ -267,9 +254,10 @@ fn initLinux() Location {
         }
     } else {
         var etc = [][]const u8{"/etc/"};
-        if (loadLocationFromTZFile(&dalloc.allocator, "localtime", etc[0..])) |*tzone| {
-            tzone.name = "local";
-            return tzone.*;
+        if (loadLocationFromTZFile(&dalloc.allocator, "localtime", etc[0..])) |tzone| {
+            var zz = tzone;
+            zz.name = "local";
+            return zz;
         } else |err| {}
     }
     return utc_local;

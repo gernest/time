@@ -45,7 +45,7 @@ const nsecShift = 30;
 pub const Time = struct {
     wall: u64,
     ext: i64,
-    loc: ?*timezone.Location,
+    loc: ?timezone.Location,
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -89,7 +89,11 @@ pub const Time = struct {
     }
 
     fn abs(self: Time) u64 {
-        const usec = self.unixSec();
+        var usec = self.unixSec();
+        if (self.loc) |*value| {
+            const d = value.lookup(usec);
+            usec += @intCast(i64, d.offset);
+        }
         return @intCast(u64, usec + (unixToInternal + internalToAbsolute));
     }
 
@@ -369,18 +373,19 @@ const days = [][]const u8{
 
 pub fn now() Time {
     const bt = timeNow();
+    var local = timezone.getLocal();
     const sec = (bt.sec + unixToInternal) - minWall;
     if ((@intCast(u64, sec) >> 33) != 0) {
         return Time{
             .wall = @intCast(u64, bt.nsec),
             .ext = sec + minWall,
-            .loc = timezone.getLocal(),
+            .loc = local,
         };
     }
     return Time{
         .wall = hasMonotonic | (@intCast(u64, sec) << nsecShift) | @intCast(u64, bt.nsec),
         .ext = @intCast(i64, bt.mono),
-        .loc = timezone.getLocal(),
+        .loc = local,
     };
 }
 
