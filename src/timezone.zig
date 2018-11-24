@@ -50,6 +50,8 @@ pub const Location = struct {
         self.arena.deinit();
     }
 
+    /// firstZoneUsed returns whether the first zone is used by some
+    /// transition.
     pub fn firstZoneUsed(self: *Location) bool {
         if (self.tx) |tx| {
             for (tx) |value| {
@@ -105,6 +107,13 @@ pub const Location = struct {
         return 0;
     }
 
+    /// lookup returns information about the time zone in use at an
+    /// instant in time expressed as seconds since January 1, 1970 00:00:00 UTC.
+    ///
+    /// The returned information gives the name of the zone (such as "CET"),
+    /// the start and end times bracketing sec when that zone is in effect,
+    /// the offset in seconds east of UTC (such as -5*60*60), and whether
+    /// the daylight savings is being observed at that time.
     pub fn lookup(self: *Location, sec: i64) zoneDetails {
         if (self.zone == null or self.zone.?.len == 0) {
             return zoneDetails{
