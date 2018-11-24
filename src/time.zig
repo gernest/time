@@ -214,6 +214,21 @@ pub const Time = struct {
     }
 };
 
+pub const Duration = struct {
+    value: i64,
+
+    pub fn init(v: i64) Duration {
+        return Duration{ .value = v };
+    }
+};
+
+pub const Nanosecond = Duration.init(1);
+pub const Microsecond = Duration.init(1000 * Nanosecond.value);
+pub const Millisecond = Duration.init(1000 * Microsecond.value);
+pub const Second = Duration.init(1000 * Millisecond.value);
+pub const Minute = Duration.init(60 * Second.value);
+pub const Hour = Duration.init(60 * Minute.value);
+
 /// ISO 8601 year and week number
 pub const ISOWeek = struct {
     year: isize,
