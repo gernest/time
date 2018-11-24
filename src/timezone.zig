@@ -4,12 +4,14 @@
 //
 // Copyright 2018 Geofrey Ernest MIT LICENSE
 const std = @import("std");
+const builtin = @import("builtin");
+const Os = builtin.Os;
 const mem = std.mem;
 const warn = std.debug.warn;
 
 const max_file_size: usize = 10 << 20;
 
-const dalloc = std.heap.DirectAllocator.init();
+var dalloc = std.heap.DirectAllocator.init();
 var utc_local = Location.init(&dalloc.allocator, "UTC");
 pub var local: *Location = &utc_local;
 
@@ -236,23 +238,35 @@ const initLocation = switch (builtin.os) {
     Os.macosx, Os.ios => initDarwin,
     else => @compileError("Unsupported OS"),
 };
+test "initLocation" {
+    var loc = initLocation();
+    defer loc.deinit();
+    warn("{}\n", loc.name);
+}
 
 fn initDarwin() Location {
     return initLinux();
 }
 
 fn initLinux() Location {
-    var da = std.heap.DirectAllocator.init();
     var tz: ?[]const u8 = null;
-    if (std.os.getEnvMap(&da.allocator)) |value| {
+    if (std.os.getEnvMap(&dalloc.allocator)) |value| {
         const env = value;
         defer env.deinit();
         tz = env.get("TZ");
     } else |err| {}
-    if (tz) |value| {
-        if (value.len != 0 and !mem.eql(u8, value, "UTC")) {
-            if (condition) |value| {}
+    if (tz) |name| {
+        if (name.len != 0 and !mem.eql(u8, name, "UTC")) {
+            if (loadLocationFromTZFile(&dalloc.allocator, name, unix_sources[0..])) |tzone| {
+                return tzone;
+            } else |err| {}
         }
+    } else {
+        var etc = [][]const u8{"/etc/"};
+        if (loadLocationFromTZFile(&dalloc.allocator, "localtime", etc[0..])) |*tzone| {
+            tzone.name = "local";
+            return tzone.*;
+        } else |err| {}
     }
     return utc_local;
 }
@@ -499,17 +513,7 @@ test "readFile" {
     const name = "Asia/Jerusalem";
     var loc = try loadLocationFromTZFile(std.debug.global_allocator, name, unix_sources[0..]);
     defer loc.deinit();
-    warn("{}\n", loc.name);
-    if (loc.zone) |v| {
-        warn("{}\n", v.len);
-        for (v) |vx| {
-            warn("{}\n", vx);
-        }
-    }
-    if (loc.tx) |v| {
-        warn("{}\n", v.len);
-        for (v) |vx| {
-            warn("{}\n", vx);
-        }
+    if (!mem.eql(u8, loc.name, name)) {
+        warn("expected location name {} got {} instead\n", name, loc.name);
     }
 }
