@@ -88,6 +88,8 @@ pub const Time = struct {
         return self.sec() == u.sec() and self.nsec() == u.nsec();
     }
 
+    /// abs returns the time t as an absolute time, adjusted by the zone offset.
+    /// It is called when computing a presentation property like Month or Hour.
     fn abs(self: Time) u64 {
         var usec = self.unixSec();
         if (self.loc) |*value| {
@@ -176,8 +178,14 @@ pub const Time = struct {
         return ISOWeek{ .year = d.year, .week = week };
     }
 
+    /// clock returns the hour, minute, and second within the day specified by t.
     pub fn clock(self: Time) Clock {
         return Clock.absClock(self.abs());
+    }
+
+    /// hour returns the hour within the day specified by t, in the range [0, 23].
+    pub fn hour(self: Time) isize {
+        return @divTrunc(@intCast(isize, self.abs() % secondsPerDay), secondsPerHour);
     }
 };
 
@@ -408,6 +416,7 @@ test "now" {
     debug.warn("week {}\n", ts.weekday());
     debug.warn("isoWeek {}\n", ts.isoWeek());
     debug.warn("clock {}\n", ts.clock());
+    debug.warn("hour {}\n", ts.hour());
 }
 
 const bintime = struct {
