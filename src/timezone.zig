@@ -250,7 +250,9 @@ fn initLinux() Location {
         tz = env.get("TZ");
     } else |err| {}
     if (tz) |value| {
-        if (value.len != 0 and !mem.eql(u8, value, "UTC")) {}
+        if (value.len != 0 and !mem.eql(u8, value, "UTC")) {
+            if (condition) |value| {}
+        }
     }
     return utc_local;
 }
@@ -486,12 +488,16 @@ fn loadLocationFile(name: []const u8, buf: *std.Buffer, sources: [][]const u8) !
     return error.MissingZoneFile;
 }
 
-test "readFile" {
-    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+fn loadLocationFromTZFile(a: *mem.Allocator, name: []const u8, sources: [][]const u8) !Location {
+    var buf = try std.Buffer.init(a, "");
     defer buf.deinit();
+    try loadLocationFile(name, &buf, sources);
+    return loadLocationFromTZData(a, name, buf.toSlice());
+}
+
+test "readFile" {
     const name = "Asia/Jerusalem";
-    try loadLocationFile(name, &buf, unix_sources[0..]);
-    var loc = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
+    var loc = try loadLocationFromTZFile(std.debug.global_allocator, name, unix_sources[0..]);
     defer loc.deinit();
     warn("{}\n", loc.name);
     if (loc.zone) |v| {
