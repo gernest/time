@@ -205,6 +205,13 @@ pub const Time = struct {
     pub fn nanosecond(self: Time) isize {
         return @intCast(isize, self.nsec());
     }
+
+    /// yearDay returns the day of the year specified by t, in the range [1,365] for non-leap years,
+    /// and [1,366] in leap years.
+    pub fn yearDay(self: Time) isize {
+        const d = absDate(self.abs(), false);
+        return d.yday + 1;
+    }
 };
 
 /// ISO 8601 year and week number
@@ -438,6 +445,7 @@ test "now" {
     debug.warn("minute {}\n", ts.minute());
     debug.warn("second {}\n", ts.second());
     debug.warn("nanosecond {}\n", ts.nanosecond());
+    debug.warn("yearDay {}\n", ts.yearDay());
 }
 
 const bintime = struct {
