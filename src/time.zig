@@ -199,6 +199,12 @@ pub const Time = struct {
     pub fn second(self: Time) isize {
         return @intCast(isize, self.abs() % secondsPerMinute);
     }
+
+    /// Nanosecond returns the nanosecond offset within the second specified by t,
+    /// in the range [0, 999999999].
+    pub fn nanosecond(self: Time) isize {
+        return @intCast(isize, self.nsec());
+    }
 };
 
 /// ISO 8601 year and week number
@@ -431,6 +437,7 @@ test "now" {
     debug.warn("hour {}\n", ts.hour());
     debug.warn("minute {}\n", ts.minute());
     debug.warn("second {}\n", ts.second());
+    debug.warn("nanosecond {}\n", ts.nanosecond());
 }
 
 const bintime = struct {
