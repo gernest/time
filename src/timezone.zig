@@ -50,6 +50,17 @@ pub const Location = struct {
         self.arena.deinit();
     }
 
+    pub fn firstZoneUsed(self: *Location) bool {
+        if (self.tx) |tx| {
+            for (tx) |value| {
+                if (value.index == 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     pub fn lookup(self: *Location, sec: i64) zoneDetails {
         if (self.zone == null or self.zone.?.len == 0) {
             return zoneDetails{
