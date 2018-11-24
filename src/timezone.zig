@@ -225,8 +225,35 @@ pub const zoneDetails = struct {
 const alpha: i64 = -1 << 63;
 const omega: i64 = 1 << 63 - 1;
 
-const UTC = utc_location;
-var utc_location = &Location.initName("UTC");
+const UTC = &utc_location;
+var utc_location = Location.initName("UTC");
+var Local = &local_location;
+
+var local_location = initLocation();
+
+const initLocation = switch (builtin.os) {
+    Os.linux => initLinux,
+    Os.macosx, Os.ios => initDarwin,
+    else => @compileError("Unsupported OS"),
+};
+
+fn initDarwin() Location {
+    return initLinux();
+}
+
+fn initLinux() Location {
+    var da = std.heap.DirectAllocator.init();
+    var tz: ?[]const u8 = null;
+    if (std.os.getEnvMap(&da.allocator)) |value| {
+        const env = value;
+        defer env.deinit();
+        tz = env.get("TZ");
+    } else |err| {}
+    if (tz) |value| {
+        if (value.len != 0 and !mem.eql(u8, value, "UTC")) {}
+    }
+    return utc_local;
+}
 
 const dataIO = struct {
     p: []u8,
@@ -429,7 +456,7 @@ pub fn loadLocationFromTZData(a: *mem.Allocator, name: []const u8, data: []u8) !
 }
 
 // darwin_sources directory to search for timezone files.
-const unix_sources = [][]const u8{
+var unix_sources = [][]const u8{
     "/usr/share/zoneinfo/",
     "/usr/share/lib/zoneinfo/",
     "/usr/lib/locale/TZ/",
@@ -443,10 +470,10 @@ fn readFile(path: []const u8, buf: *std.Buffer) !void {
     try stream.readAllBuffer(buf, max_file_size);
 }
 
-fn loadLocationFile(name: []const u8, buf: *std.Buffer) !void {
+fn loadLocationFile(name: []const u8, buf: *std.Buffer, sources: [][]const u8) !void {
     var tmp = try std.Buffer.init(buf.list.allocator, "");
     defer tmp.deinit();
-    for (unix_sources) |source| {
+    for (sources) |source| {
         try buf.resize(0);
         try tmp.append(source);
         try tmp.append("/");
@@ -463,7 +490,7 @@ test "readFile" {
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     const name = "Asia/Jerusalem";
-    try loadLocationFile(name, &buf);
+    try loadLocationFile(name, &buf, unix_sources[0..]);
     var loc = try loadLocationFromTZData(std.debug.global_allocator, name, buf.toSlice());
     defer loc.deinit();
     warn("{}\n", loc.name);
