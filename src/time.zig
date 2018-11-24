@@ -374,6 +374,11 @@ const days = [][]const u8{
 pub fn now() Time {
     const bt = timeNow();
     var local = timezone.getLocal();
+    return nowWithLoc(local);
+}
+
+pub fn nowWithLoc(local: timezone.Location) Time {
+    const bt = timeNow();
     const sec = (bt.sec + unixToInternal) - minWall;
     if ((@intCast(u64, sec) >> 33) != 0) {
         return Time{
