@@ -212,6 +212,24 @@ pub const Time = struct {
         const d = absDate(self.abs(), false);
         return d.yday + 1;
     }
+
+    /// zone computes the time zone in effect at time t, returning the abbreviated
+    /// name of the zone (such as "CET") and its offset in seconds east of UTC.
+    pub fn zone(self: Time) ?ZoneDetail {
+        if (self.loc) |v| {
+            const zn = v.lookup(self.unixSec());
+            return ZoneDetail{
+                .name = zn.name,
+                .offset = zn.offset,
+            };
+        }
+        return null;
+    }
+};
+
+const ZoneDetail = struct {
+    name: []const u8,
+    offset: isize,
 };
 
 pub const Duration = struct {
@@ -489,6 +507,7 @@ test "now" {
     debug.warn("second {}\n", ts.second());
     debug.warn("nanosecond {}\n", ts.nanosecond());
     debug.warn("yearDay {}\n", ts.yearDay());
+    debug.warn("zone {}\n", ts.zone());
 }
 
 const bintime = struct {
