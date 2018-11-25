@@ -66,6 +66,10 @@ pub const Time = struct {
         return self.sec() + internalToUnix;
     }
 
+    pub fn unix(self: Time) i64 {
+        return self.unixSec();
+    }
+
     fn addSec(self: *Time, d: i64) void {
         self.ext += d;
     }
@@ -224,6 +228,15 @@ pub const Time = struct {
             };
         }
         return null;
+    }
+
+    /// utc returns time with the location set to UTC.
+    fn utc(self: Time) Time {
+        return Time{
+            .wall = self.wall,
+            .ext = self.ext,
+            .loc = timezone.utc_local,
+        };
     }
 };
 
@@ -484,30 +497,17 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: timezone.Location) Time {
 pub fn unix(sec: i64, nsec: i64, local: timezone.Location) Time {
     var x = sec;
     var y = nsec;
-    if (nsec < 0 or nsec >= 1e9) {
-        const n = @divTrunc(nsec, 1e9);
+    const exp = @floatToInt(i64, 1e9);
+    if (nsec < 0 or nsec >= exp) {
+        const n = @divTrunc(nsec, exp);
         x += n;
-        y -= (n * 1e9);
+        y -= (n * exp);
         if (y < 0) {
-            y += 1e9;
+            y += exp;
             x -= 1;
         }
     }
     return unixTimeWithLoc(x, @intCast(i32, y), local);
-}
-
-test "now" {
-    var ts = now();
-    debug.warn("date {}\n", ts.date());
-    debug.warn("week {}\n", ts.weekday());
-    debug.warn("isoWeek {}\n", ts.isoWeek());
-    debug.warn("clock {}\n", ts.clock());
-    debug.warn("hour {}\n", ts.hour());
-    debug.warn("minute {}\n", ts.minute());
-    debug.warn("second {}\n", ts.second());
-    debug.warn("nanosecond {}\n", ts.nanosecond());
-    debug.warn("yearDay {}\n", ts.yearDay());
-    debug.warn("zone {}\n", ts.zone());
 }
 
 const bintime = struct {

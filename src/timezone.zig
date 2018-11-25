@@ -12,8 +12,7 @@ const warn = std.debug.warn;
 const max_file_size: usize = 10 << 20;
 
 var dalloc = std.heap.DirectAllocator.init();
-const UTC = &utc_local;
-var utc_local = Location.init(&dalloc.allocator, "UTC");
+pub var utc_local = Location.init(&dalloc.allocator, "UTC");
 
 pub fn getLocal() Location {
     return initLocation();
