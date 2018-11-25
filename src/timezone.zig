@@ -499,12 +499,3 @@ fn loadLocationFromTZFile(a: *mem.Allocator, name: []const u8, sources: [][]cons
     try loadLocationFile(name, &buf, sources);
     return loadLocationFromTZData(a, name, buf.toSlice());
 }
-
-test "readFile" {
-    const name = "Asia/Jerusalem";
-    var loc = try loadLocationFromTZFile(std.debug.global_allocator, name, unix_sources[0..]);
-    defer loc.deinit();
-    if (!mem.eql(u8, loc.name, name)) {
-        warn("expected location name {} got {} instead\n", name, loc.name);
-    }
-}
