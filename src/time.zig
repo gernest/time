@@ -450,6 +450,34 @@ pub fn nowWithLoc(local: timezone.Location) Time {
     };
 }
 
+fn unixTime(sec: i64, nsec: i32) Time {
+    var local = timezone.getLocal();
+    return unixTimeWithLoc(sec, nsec, local);
+}
+
+fn unixTimeWithLoc(sec: i64, nsec: i32, loc: timezone.Location) Time {
+    return Time{
+        .wall = @intCast(u64, nsec),
+        .ext = sec + unixToInternal,
+        .loc = loc,
+    };
+}
+
+pub fn unix(sec: i64, nsec: i64, local: timezone.Location) Time {
+    var x = sec;
+    var y = nsec;
+    if (nsec < 0 or nsec >= 1e9) {
+        const n = @divTrunc(nsec, 1e9);
+        x += n;
+        y -= (n * 1e9);
+        if (y < 0) {
+            y += 1e9;
+            x -= 1;
+        }
+    }
+    return unixTimeWithLoc(x, @intCast(i32, y), local);
+}
+
 test "now" {
     var ts = now();
     debug.warn("date {}\n", ts.date());
