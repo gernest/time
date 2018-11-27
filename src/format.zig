@@ -280,6 +280,98 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                     };
                 }
             },
+            '-' => {
+                if (layout.len >= i + 7 and mem.eql(u8, layout[i .. i + 7], "-070000")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdNumSecondsTz,
+                        .suffix = layout[i + 7 ..],
+                    };
+                }
+                if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "-07:00:00")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdNumColonSecondsTZ,
+                        .suffix = layout[i + 9 ..],
+                    };
+                }
+                if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "-0700")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdNumTZ,
+                        .suffix = layout[i + 5 ..],
+                    };
+                }
+                if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "-07:00")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdNumColonTZ,
+                        .suffix = layout[i + 6 ..],
+                    };
+                }
+                if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "-07")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdNumShortTZ,
+                        .suffix = layout[i + 3 ..],
+                    };
+                }
+            },
+            'Z' => { // Z070000, Z07:00:00, Z0700, Z07:00,
+                if (layout.len >= i + 7 and mem.eql(u8, layout[i .. i + 7], "Z070000")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdISO8601SecondsTZ,
+                        .suffix = layout[i + 7 ..],
+                    };
+                }
+                if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "Z07:00:00")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdISO8601ColonSecondsTZ,
+                        .suffix = layout[i + 9 ..],
+                    };
+                }
+                if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "Z0700")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdISO8601TZ,
+                        .suffix = layout[i + 5 ..],
+                    };
+                }
+                if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "Z07:00")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdISO8601ColonTZ,
+                        .suffix = layout[i + 6 ..],
+                    };
+                }
+                if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "Z07")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdISO8601ShortTZ,
+                        .suffix = layout[i + 6 ..],
+                    };
+                }
+            },
+            '.' => { // .000 or .999 - repeated digits for fractional seconds.
+                if (i + 1 < layout.len and (layout[i + 1] == '0' or layout[i + 1] == '9')) {
+                    const ch = layout[i + 1];
+                    var j = i + 1;
+                    while (j < layout.len and layout[j] == ch) : (j += 1) {}
+                    if (!isDigit(layout, j)) {
+                        var st = chunk.stdFracSecond0;
+                        if (layout[i + 1] == '9') {
+                            st = chunk.stdFracSecond9;
+                        }
+                        return chuckResult{
+                            .prefix = layout[0..i],
+                            .chunk = st,
+                            .suffix = layout[j..],
+                        };
+                    }
+                }
+            },
             else => {},
         }
     }
@@ -289,6 +381,14 @@ fn nextStdChunk(layout: []const u8) chuckResult {
         .chunk = chunk.none,
         .suffix = "",
     };
+}
+
+fn isDigit(s: []const u8, i: usize) bool {
+    if (s.len <= i) {
+        return false;
+    }
+    const c = s[i];
+    return '0' <= c and c <= '9';
 }
 
 test "chunk" {
