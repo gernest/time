@@ -217,6 +217,69 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                     .suffix = layout[i + 1 ..],
                 };
             },
+            '2' => { // 2006, 2
+                if (layout.len >= i + 4 and mem.eql(u8, layout[i .. i + 4], "2006")) {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdLongYear,
+                        .suffix = layout[i + 4 ..],
+                    };
+                }
+                return chuckResult{
+                    .prefix = layout[0..i],
+                    .chunk = chunk.stdDay,
+                    .suffix = layout[i + 1 ..],
+                };
+            },
+            '_' => { // _2, _2006
+                if (layout.len >= i + 4 and layout[i + 1] == '2') {
+                    //_2006 is really a literal _, followed by stdLongYear
+                    if (layout.len >= i + 5 and mem.eql(u8, layout[i + 1 .. i + 5], "2006")) {
+                        return chuckResult{
+                            .prefix = layout[0..i],
+                            .chunk = chunk.stdLongYear,
+                            .suffix = layout[i + 5 ..],
+                        };
+                    }
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdUnderDay,
+                        .suffix = layout[i + 2 ..],
+                    };
+                }
+            },
+            '3' => {
+                return chuckResult{
+                    .prefix = layout[0..i],
+                    .chunk = chunk.stdHour12,
+                    .suffix = layout[i + 1 ..],
+                };
+            },
+            '4' => {
+                return chuckResult{
+                    .prefix = layout[0..i],
+                    .chunk = chunk.stdSecond,
+                    .suffix = layout[i + 1 ..],
+                };
+            },
+            'P' => { // PM
+                if (layout.len >= i + 2 and layout[i + 1] == 'M') {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdPM,
+                        .suffix = layout[i + 2 ..],
+                    };
+                }
+            },
+            'p' => { // pm
+                if (layout.len >= i + 2 and layout[i + 1] == 'm') {
+                    return chuckResult{
+                        .prefix = layout[0..i],
+                        .chunk = chunk.stdpm,
+                        .suffix = layout[i + 2 ..],
+                    };
+                }
+            },
             else => {},
         }
     }
