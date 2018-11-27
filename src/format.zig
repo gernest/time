@@ -466,3 +466,12 @@ fn match(s1: []const u8, s2: []const u8) bool {
     }
     return true;
 }
+
+fn lookup(tab: [][]const u8, val: []const u8) !usize {
+    for (tab) |v, i| {
+        if (val.len >= v.len and match(val[0..v.len], v)) {
+            return i;
+        }
+    }
+    return error.BadValue;
+}
