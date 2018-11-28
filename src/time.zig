@@ -422,6 +422,30 @@ pub const Time = struct {
     }
 };
 
+fn appendInt(stream: var, x: isize, width: usize) !void {
+    var u = @intCast(usize, x);
+    if (x < 0) {
+        try stream.write("-");
+        u = @intCast(usize, -x);
+    }
+    var buf: [20]u8 = undefined;
+    var i = buf.len;
+    while (u > 10) {
+        i -= 1;
+        const q = @divTrunc(u, 10);
+        buf[i] = '0' + @intCast(u8, u) - @intCast(u8, 9 * 10);
+        u = q;
+    }
+    i -= 1;
+    buf[i] = '0' + @intCast(u8, u);
+    var w = buf.len - 1;
+    while (w < width) : (w += 1) {
+        try stream.write("0");
+    }
+    const v = buf[i..];
+    try stream.write(v);
+}
+
 const ZoneDetail = struct {
     name: []const u8,
     offset: isize,
