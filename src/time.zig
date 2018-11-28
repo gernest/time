@@ -246,7 +246,116 @@ pub const Time = struct {
         };
     }
 
-    pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {}
+    pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {
+        var stream = std.io.BufferOutStream(out);
+        return self.appendFormat(&stream.stream, layout);
+    }
+
+    pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
+        const abs_value = self.abs();
+        const tz = self.zone();
+        const clock = self.clock();
+        const ddate = self.date();
+        var lay = layout;
+        while (lay.len != 0) {
+            const ctx = nextStdChunk(lay);
+            if (ctx.prefix.len != 0) {
+                try stream.write(ctx.prefix);
+            }
+            lay = ctx.suffix;
+            switch (ctx.chunk) {
+                chunk.none => return,
+                chunk.stdYear => {
+                    var y = ddate.year;
+                    if (y < 0) {
+                        y = -y;
+                    }
+                    try stream.writeIntNe(isize, @mod(y, 100));
+                },
+                chunk.stdLongYear => {
+                    try stream.writeIntNe(isize, year);
+                },
+                chunk.stdMonth => {
+                    try stream.write(ddate.month.string()[0..3]);
+                },
+                chunk.stdLongMonth => {
+                    try stream.write(ddate.month.string());
+                },
+                chunk.stdNumMonth => {
+                    try stream.writeIntNe(usize, @enumToInt(ddate.month));
+                },
+                chunk.stdZeroMonth => {
+                    try stream.writeIntNe(usize, @enumToInt(ddate.month));
+                },
+                chunk.stdWeekDay => {
+                    const wk = self.weekday();
+                    try stream.write(wk.string()[0..3]);
+                },
+                chunk.stdLongWeekDay => {
+                    const wk = self.weekday();
+                    try stream.write(wk.string());
+                },
+                chunk.stdDay => {
+                    try stream.writeIntNe(usize, ddate.day);
+                },
+                chunk.stdUnderDay => {
+                    if (ddate.day < 10) {
+                        try stream.write(" ");
+                    }
+                    try stream.writeIntNe(usize, ddate.day);
+                },
+                chunk.stdZeroDay => {
+                    try stream.writeIntNe(usize, ddate.day);
+                },
+                chunk.stdHour => {
+                    try stream.writeIntNe(isize, clock.hour);
+                },
+                chunk.stdHour12 => {
+                    // Noon is 12PM, midnight is 12AM.
+                    var hr = @mod(clock.hour, 12);
+                    if (hr == 0) {
+                        hr = 12;
+                    }
+                    try stream.writeIntNe(isize, hr);
+                },
+                chunk.stdZeroHour12 => {
+                    // Noon is 12PM, midnight is 12AM.
+                    var hr = @mod(clock.hour, 12);
+                    if (hr == 0) {
+                        hr = 12;
+                    }
+                    try stream.writeIntNe(isize, hr);
+                },
+                chunk.stdMinute => {
+                    try stream.writeIntNe(isize, clock.min);
+                },
+                chunk.stdZeroMinute => {
+                    try stream.writeIntNe(isize, clock.min);
+                },
+                chunk.stdSecond => {
+                    try stream.writeIntNe(isize, clock.sec);
+                },
+                chunk.stdZeroSecond => {
+                    try stream.writeIntNe(isize, clock.sec);
+                },
+                chunk.stdPM => {
+                    if (clock.hour >= 12) {
+                        try stream.write("PM");
+                    } else {
+                        try stream.write("AM");
+                    }
+                },
+                chunk.stdpm => {
+                    if (clock.hour >= 12) {
+                        try stream.write("pm");
+                    } else {
+                        try stream.write("am");
+                    }
+                },
+                else => unreachable,
+            }
+        }
+    }
 };
 
 const ZoneDetail = struct {
