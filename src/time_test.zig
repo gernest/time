@@ -97,3 +97,46 @@ test "TestSecondsToUTC" {
         }
     }
 }
+
+const formatTest = struct {
+    name: []const u8,
+    format: []const u8,
+    result: []const u8,
+
+    fn init(name: []const u8, format: []const u8, result: []const u8) formatTest {
+        return formatTest{ .name = name, .format = format, .result = result };
+    }
+};
+
+const format_tests = []formatTest{
+    formatTest.init("ANSIC", time.ANSIC, "Wed Feb  4 21:00:57 2009"),
+    formatTest.init("UnixDate", time.UnixDate, "Wed Feb  4 21:00:57 PST 2009"),
+    formatTest.init("RubyDate", time.RubyDate, "Wed Feb 04 21:00:57 -0800 2009"),
+    formatTest.init("RFC822", time.RFC822, "04 Feb 09 21:00 PST"),
+    formatTest.init("RFC850", time.RFC850, "Wednesday, 04-Feb-09 21:00:57 PST"),
+    formatTest.init("RFC1123", time.RFC1123, "Wed, 04 Feb 2009 21:00:57 PST"),
+    formatTest.init("RFC1123Z", time.RFC1123Z, "Wed, 04 Feb 2009 21:00:57 -0800"),
+    formatTest.init("RFC3339", time.RFC3339, "2009-02-04T21:00:57-08:00"),
+    formatTest.init("RFC3339Nano", time.RFC3339Nano, "2009-02-04T21:00:57.0123456-08:00"),
+    formatTest.init("Kitchen", time.Kitchen, "9:00PM"),
+    formatTest.init("am/pm", "3pm", "9pm"),
+    formatTest.init("AM/PM", "3PM", "9PM"),
+    formatTest.init("two-digit year", "06 01 02", "09 02 04"),
+    // Three-letter months and days must not be followed by lower-case letter.
+    formatTest.init("Janet", "Hi Janet, the Month is January", "Hi Janet, the Month is February"),
+    // Time stamps, Fractional seconds.
+    formatTest.init("Stamp", time.Stamp, "Feb  4 21:00:57"),
+    formatTest.init("StampMilli", time.StampMilli, "Feb  4 21:00:57.012"),
+    formatTest.init("StampMicro", time.StampMicro, "Feb  4 21:00:57.012345"),
+    formatTest.init("StampNano", time.StampNano, "Feb  4 21:00:57.012345600"),
+};
+
+test "TestFormat" {
+    var ts = time.unix(0, 1233810057012345600, timezone.utc_local);
+    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+    for (format_tests) |value| {
+        try ts.format(&buf, value.format);
+        warn("{}: formtat = {} output= {}\n", value.name, value.format, buf.toSlice());
+    }
+}

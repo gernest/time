@@ -247,13 +247,14 @@ pub const Time = struct {
     }
 
     pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {
+        try out.resize(0);
         var stream = std.io.BufferOutStream.init(out);
         return self.appendFormat(&stream.stream, layout);
     }
 
     pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
         const abs_value = self.abs();
-        const tz = self.zone();
+        const tz = self.zone().?;
         const clock_value = self.clock();
         const ddate = self.date();
         var lay = layout;
@@ -352,7 +353,7 @@ pub const Time = struct {
                         try stream.print("{}", "am");
                     }
                 },
-                chunk.stdISO8601TZ, chunk.stdISO8601ColonTZ, chunk.stdISO8601SecondsTZ, chunk.stdISO8601ShortTZ, chunk.stdISO8601ColonSecondsTZ, chunk.stdNumTZ, stdNumColonTZ, chunk.stdNumSecondsTz, chunk.stdNumShortTZ, chunk.stdNumColonSecondsTZ => {
+                chunk.stdISO8601TZ, chunk.stdISO8601ColonTZ, chunk.stdISO8601SecondsTZ, chunk.stdISO8601ShortTZ, chunk.stdISO8601ColonSecondsTZ, chunk.stdNumTZ, chunk.stdNumColonTZ, chunk.stdNumSecondsTz, chunk.stdNumShortTZ, chunk.stdNumColonSecondsTZ => {
                     // Ugly special case. We cheat and take the "Z" variants
                     // to mean "the time zone as formatted for ISO 8601".
                     const cond = tz.offset == 0 and (ctx.chunk.eql(chunk.stdISO8601TZ) or
@@ -402,7 +403,7 @@ pub const Time = struct {
                         try stream.print("{}", tz.name);
                         continue;
                     }
-                    const z = @divTrunc(tz.offset, 60);
+                    var z = @divTrunc(tz.offset, 60);
                     if (z < 0) {
                         try stream.write("-");
                         z = -z;
