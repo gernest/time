@@ -352,6 +352,51 @@ pub const Time = struct {
                         try stream.print("{}", "am");
                     }
                 },
+                chunk.stdISO8601TZ, chunk.stdISO8601ColonTZ, chunk.stdISO8601SecondsTZ, chunk.stdISO8601ShortTZ, chunk.stdISO8601ColonSecondsTZ, chunk.stdNumTZ, stdNumColonTZ, chunk.stdNumSecondsTz, chunk.stdNumShortTZ, chunk.stdNumColonSecondsTZ => {
+                    // Ugly special case. We cheat and take the "Z" variants
+                    // to mean "the time zone as formatted for ISO 8601".
+                    const cond = tz.offset == 0 and (ctx.chunk.eql(chunk.stdISO8601TZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ColonTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601SecondsTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ShortTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ));
+                    if (cond) {
+                        try stream.write("Z");
+                    }
+                    var z = @divTrunc(tz.offset, 60);
+                    var abs_offset = tz.offset;
+                    if (z < 0) {
+                        try stream.write("-");
+                        z = -z;
+                        abs_offset = -abs_offset;
+                    } else {
+                        try stream.write("+");
+                    }
+                    try stream.print("{}", @divTrunc(z, 60));
+                    if (ctx.chunk.eql(chunk.stdISO8601ColonTZ) or
+                        ctx.chunk.eql(chunk.stdNumColonTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ) or
+                        ctx.chunk.eql(chunk.stdNumColonSecondsTZ))
+                    {
+                        try stream.write(":");
+                    }
+                    if (!ctx.chunk.eql(chunk.stdNumShortTZ) and !ctx.chunk.eql(chunk.stdISO8601ShortTZ)) {
+                        try stream.print("{}", @mod(z, 60));
+                    }
+                    if (ctx.chunk.eql(chunk.stdISO8601SecondsTZ) or
+                        ctx.chunk.eql(chunk.stdNumSecondsTz) or
+                        ctx.chunk.eql(chunk.stdNumColonSecondsTZ) or
+                        ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ))
+                    {
+                        if (ctx.chunk.eql(chunk.stdNumColonSecondsTZ) or
+                            ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ))
+                        {
+                            try stream.write(":");
+                        }
+                        try stream.print("{}", @mod(abs_offset, 60));
+                    }
+                },
                 else => unreachable,
             }
         }
@@ -793,6 +838,10 @@ pub const chunk = enum {
     stdNeedDate, // need month, day, year
     stdNeedClock, // need hour, minute, second
     stdArgShift, // extra argument in high bits, above low stdArgShift
+
+    fn eql(self: chunk, other: chunk) bool {
+        return @enumToInt(self) == @enumToInt(other);
+    }
 };
 
 // startsWithLowerCase reports whether the string has a lower-case letter at the beginning.
