@@ -247,20 +247,20 @@ pub const Time = struct {
     }
 
     pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {
-        var stream = std.io.BufferOutStream(out);
+        var stream = std.io.BufferOutStream.init(out);
         return self.appendFormat(&stream.stream, layout);
     }
 
     pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
         const abs_value = self.abs();
         const tz = self.zone();
-        const clock = self.clock();
+        const clock_value = self.clock();
         const ddate = self.date();
         var lay = layout;
         while (lay.len != 0) {
             const ctx = nextStdChunk(lay);
             if (ctx.prefix.len != 0) {
-                try stream.write(ctx.prefix);
+                try stream.print("{}", ctx.prefix);
             }
             lay = ctx.suffix;
             switch (ctx.chunk) {
@@ -270,16 +270,16 @@ pub const Time = struct {
                     if (y < 0) {
                         y = -y;
                     }
-                    try stream.writeIntNe(isize, @mod(y, 100));
+                    try stream.print("{}", @mod(y, 100));
                 },
                 chunk.stdLongYear => {
-                    try stream.writeIntNe(isize, year);
+                    try stream.print("{}", ddate.year);
                 },
                 chunk.stdMonth => {
-                    try stream.write(ddate.month.string()[0..3]);
+                    try stream.print("{}", ddate.month.string()[0..3]);
                 },
                 chunk.stdLongMonth => {
-                    try stream.write(ddate.month.string());
+                    try stream.print("{}", ddate.month.string());
                 },
                 chunk.stdNumMonth => {
                     try stream.writeIntNe(usize, @enumToInt(ddate.month));
@@ -289,67 +289,67 @@ pub const Time = struct {
                 },
                 chunk.stdWeekDay => {
                     const wk = self.weekday();
-                    try stream.write(wk.string()[0..3]);
+                    try stream.print("{}", wk.string()[0..3]);
                 },
                 chunk.stdLongWeekDay => {
                     const wk = self.weekday();
-                    try stream.write(wk.string());
+                    try stream.print("{}", wk.string());
                 },
                 chunk.stdDay => {
-                    try stream.writeIntNe(usize, ddate.day);
+                    try stream.print("{}", ddate.day);
                 },
                 chunk.stdUnderDay => {
                     if (ddate.day < 10) {
-                        try stream.write(" ");
+                        try stream.print("{}", " ");
                     }
-                    try stream.writeIntNe(usize, ddate.day);
+                    try stream.print("{}", ddate.day);
                 },
                 chunk.stdZeroDay => {
-                    try stream.writeIntNe(usize, ddate.day);
+                    try stream.print("{}", ddate.day);
                 },
                 chunk.stdHour => {
-                    try stream.writeIntNe(isize, clock.hour);
+                    try stream.print("{}", clock_value.hour);
                 },
                 chunk.stdHour12 => {
                     // Noon is 12PM, midnight is 12AM.
-                    var hr = @mod(clock.hour, 12);
+                    var hr = @mod(clock_value.hour, 12);
                     if (hr == 0) {
                         hr = 12;
                     }
-                    try stream.writeIntNe(isize, hr);
+                    try stream.print("{}", hr);
                 },
                 chunk.stdZeroHour12 => {
                     // Noon is 12PM, midnight is 12AM.
-                    var hr = @mod(clock.hour, 12);
+                    var hr = @mod(clock_value.hour, 12);
                     if (hr == 0) {
                         hr = 12;
                     }
-                    try stream.writeIntNe(isize, hr);
+                    try stream.print("{}", hr);
                 },
                 chunk.stdMinute => {
-                    try stream.writeIntNe(isize, clock.min);
+                    try stream.print("{}", clock_value.min);
                 },
                 chunk.stdZeroMinute => {
-                    try stream.writeIntNe(isize, clock.min);
+                    try stream.print("{}", clock_value.min);
                 },
                 chunk.stdSecond => {
-                    try stream.writeIntNe(isize, clock.sec);
+                    try stream.print("{}", clock_value.sec);
                 },
                 chunk.stdZeroSecond => {
-                    try stream.writeIntNe(isize, clock.sec);
+                    try stream.print("{}", clock_value.sec);
                 },
                 chunk.stdPM => {
-                    if (clock.hour >= 12) {
-                        try stream.write("PM");
+                    if (clock_value.hour >= 12) {
+                        try stream.print("{}", "PM");
                     } else {
-                        try stream.write("AM");
+                        try stream.print("{}", "AM");
                     }
                 },
                 chunk.stdpm => {
-                    if (clock.hour >= 12) {
-                        try stream.write("pm");
+                    if (clock_value.hour >= 12) {
+                        try stream.print("{}", "pm");
                     } else {
-                        try stream.write("am");
+                        try stream.print("{}", "am");
                     }
                 },
                 else => unreachable,
@@ -421,7 +421,7 @@ pub const Month = enum(usize) {
 
     pub fn string(self: Month) []const u8 {
         const m = @enumToInt(self);
-        if (m <= @enumToInt(Month.January) and m <= @enumToInt(Month.December)) {
+        if (@enumToInt(Month.January) <= m and m <= @enumToInt(Month.December)) {
             return months[m];
         }
         unreachable;
@@ -639,13 +639,13 @@ fn timeNow() bintime {
         Os.linux => {
             var ts: posix.timespec = undefined;
             const err = posix.clock_gettime(posix.CLOCK_REALTIME, &ts);
-            debug.assert(err == 0);
+            std.debug.assert(err == 0);
             return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec, .mono = clockNative() };
         },
         Os.macosx, Os.ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
-            debug.assert(err == 0);
+            std.debug.assert(err == 0);
             return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec, .mono = clockNative() };
         },
         else => @compileError("Unsupported OS"),
