@@ -271,10 +271,10 @@ pub const Time = struct {
                     if (y < 0) {
                         y = -y;
                     }
-                    try stream.print("{}", @mod(y, 100));
+                    try appendInt(stream, @mod(y, 100), 2);
                 },
                 chunk.stdLongYear => {
-                    try stream.print("{}", ddate.year);
+                    try appendInt(stream, ddate.year, 4);
                 },
                 chunk.stdMonth => {
                     try stream.print("{}", ddate.month.string()[0..3]);
@@ -433,7 +433,7 @@ fn appendInt(stream: var, x: isize, width: usize) !void {
     while (u > 10) {
         i -= 1;
         const q = @divTrunc(u, 10);
-        buf[i] = '0' + @intCast(u8, u) - @intCast(u8, 9 * 10);
+        buf[i] = @intCast(u8, '0' + u - q * 10);
         u = q;
     }
     i -= 1;
