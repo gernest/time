@@ -397,6 +397,24 @@ pub const Time = struct {
                         try stream.print("{}", @mod(abs_offset, 60));
                     }
                 },
+                chunk.stdTZ => {
+                    if (tz.name.len != 0) {
+                        try stream.print("{}", tz.name);
+                        continue;
+                    }
+                    const z = @divTrunc(tz.offset, 60);
+                    if (z < 0) {
+                        try stream.write("-");
+                        z = -z;
+                    } else {
+                        try stream.write("+");
+                    }
+                    try stream.print("{}", @divTrunc(z, 60));
+                    try stream.print("{}", @mod(z, 60));
+                },
+                chunk.stdFracSecond0, chunk.stdFracSecond9 => {
+                    try stream.print("{}", self.nanosecond());
+                },
                 else => unreachable,
             }
         }
@@ -1113,11 +1131,6 @@ fn isDigit(s: []const u8, i: usize) bool {
     }
     const c = s[i];
     return '0' <= c and c <= '9';
-}
-
-test "chunk" {
-    const rs = nextStdChunk("02 yeah");
-    warn("{}\n", rs);
 }
 
 const long_day_names = [][]const u8{
