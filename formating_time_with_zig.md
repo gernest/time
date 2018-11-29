@@ -1,23 +1,45 @@
+## formating timestamps with zig
+
+Most of you are not aware of the [time package](https://github.com/gernest/time).
+A new release has just landed with support for formating time into various timestamps.
+
+### Layouts
+Time is formatted into different layouts. A layout is a string which defines
+how time is formatted, for example `Mon Jan 2 15:04:05 MST 2006`.
+
+You can read more about layouts 
+here https://github.com/gernest/time/blob/a3d45b5f5b607b7bedd4d0d4ca12307f0d6ff52b/src/time.zig#L791-L850
+
+I will focus on showcasing using the standard timestamp layouts that are provided by the library.
+
+These are standard layouts provided by the library
+
+```
+pub const ANSIC = "Mon Jan _2 15:04:05 2006";
+pub const UnixDate = "Mon Jan _2 15:04:05 MST 2006";
+pub const RubyDate = "Mon Jan 02 15:04:05 -0700 2006";
+pub const RFC822 = "02 Jan 06 15:04 MST";
+pub const RFC822Z = "02 Jan 06 15:04 -0700"; // RFC822 with numeric zone
+pub const RFC850 = "Monday, 02-Jan-06 15:04:05 MST";
+pub const RFC1123 = "Mon, 02 Jan 2006 15:04:05 MST";
+pub const RFC1123Z = "Mon, 02 Jan 2006 15:04:05 -0700"; // RFC1123 with numeric zone
+pub const RFC3339 = "2006-01-02T15:04:05Z07:00";
+pub const RFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00";
+pub const Kitchen = "3:04PM";
+// Handy time stamps.
+pub const Stamp = "Jan _2 15:04:05";
+pub const StampMilli = "Jan _2 15:04:05.000";
+pub const StampMicro = "Jan _2 15:04:05.000000";
+pub const StampNano = "Jan _2 15:04:05.000000000";
+```
+
+### show me some code
+
+```
 const std = @import("std");
 const warn = std.debug.warn;
 const time = @import("./src/time.zig");
-const timezone = @import("./src/timezone.zig");
 
-test "now" {
-    var now = time.now();
-
-    warn("\n today's date {}", now.date());
-    warn("\n today's time {}", now.clock());
-    warn("\n local timezone detail  {}\n", now.zone());
-
-    // $ zig test example.zig
-    // Test 1/1 now...
-    //  today's date DateDetail{ .year = 2018, .month = Month.November, .day = 25, .yday = 328 }
-    //  today's time Clock{ .hour = 11, .min = 17, .sec = 16 }
-    //  local timezone detail  ZoneDetail{ .name = EAT, .offset = 10800 }
-    // OK
-    // All tests passed.
-}
 
 const formatTest = struct {
     name: []const u8,
@@ -83,3 +105,8 @@ test "time.format" {
     // OK
     // All tests passed.
 }
+```
+
+All kind of feedback is welcome.
+
+Enjoy.
