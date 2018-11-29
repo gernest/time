@@ -1,6 +1,14 @@
-time for zig.
+# time for zig. 
 
-This uses monotonic clock, support timezone.
+This provides functions/api for working with time in ziglang. It is a port of
+ go's standard time package, it is not a goal of this library to be `1:1`
+ mapping with the go `time` package  API.
+
+## features
+
+- monotonic clock.
+- support timezones.
+- format time to timestamps.
 
 __WARNING__: This was only tested to work on darwin (mac os), theoretical it might work with linux but don't hold your breath, I don't have a linux machine PR's are welcome though.
 
