@@ -897,7 +897,7 @@ fn startsWithLowerCase(str: []const u8) bool {
     return 'a' <= c and c <= 'z';
 }
 
-const chuckResult = struct {
+const chunkResult = struct {
     prefix: []const u8,
     suffix: []const u8,
     chunk: chunk,
@@ -911,21 +911,21 @@ const std0x = []chunk{
     chunk.stdYear,
 };
 
-fn nextStdChunk(layout: []const u8) chuckResult {
+fn nextStdChunk(layout: []const u8) chunkResult {
     var i: usize = 0;
     while (i < layout.len) : (i += 1) {
         switch (layout[i]) {
             'J' => { // January, Jan
                 if ((layout.len >= i + 3) and mem.eql(u8, layout[i .. i + 3], "Jan")) {
                     if ((layout.len >= i + 7) and mem.eql(u8, layout[i .. i + 7], "January")) {
-                        return chuckResult{
+                        return chunkResult{
                             .prefix = layout[0..i],
                             .chunk = chunk.stdLongMonth,
                             .suffix = layout[i + 7 ..],
                         };
                     }
                     if (!startsWithLowerCase(layout[i + 3 ..])) {
-                        return chuckResult{
+                        return chunkResult{
                             .prefix = layout[0..i],
                             .chunk = chunk.stdMonth,
                             .suffix = layout[i + 3 ..],
@@ -937,14 +937,14 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                 if (layout.len >= 1 + 3) {
                     if (mem.eql(u8, layout[i .. i + 3], "Mon")) {
                         if ((layout.len >= i + 6) and mem.eql(u8, layout[i .. i + 6], "Monday")) {
-                            return chuckResult{
+                            return chunkResult{
                                 .prefix = layout[0..i],
                                 .chunk = chunk.stdLongWeekDay,
                                 .suffix = layout[i + 6 ..],
                             };
                         }
                         if (!startsWithLowerCase(layout[i + 3 ..])) {
-                            return chuckResult{
+                            return chunkResult{
                                 .prefix = layout[0..i],
                                 .chunk = chunk.stdWeekDay,
                                 .suffix = layout[i + 3 ..],
@@ -952,7 +952,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                         }
                     }
                     if (mem.eql(u8, layout[i .. i + 3], "MST")) {
-                        return chuckResult{
+                        return chunkResult{
                             .prefix = layout[0..i],
                             .chunk = chunk.stdTZ,
                             .suffix = layout[i + 3 ..],
@@ -963,7 +963,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             '0' => {
                 if (layout.len >= i + 2 and '1' <= layout[i + 1] and layout[i + 1] <= '6') {
                     const x = layout[i + 1] - '1';
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = std0x[x],
                         .suffix = layout[i + 2 ..],
@@ -972,13 +972,13 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             '1' => { // 15, 1
                 if (layout.len >= i + 2 and layout[i + 1] == '5') {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdHour,
                         .suffix = layout[i + 2 ..],
                     };
                 }
-                return chuckResult{
+                return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdNumMonth,
                     .suffix = layout[i + 1 ..],
@@ -986,13 +986,13 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             '2' => { // 2006, 2
                 if (layout.len >= i + 4 and mem.eql(u8, layout[i .. i + 4], "2006")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdLongYear,
                         .suffix = layout[i + 4 ..],
                     };
                 }
-                return chuckResult{
+                return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdDay,
                     .suffix = layout[i + 1 ..],
@@ -1002,13 +1002,13 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                 if (layout.len >= i + 4 and layout[i + 1] == '2') {
                     //_2006 is really a literal _, followed by stdLongYear
                     if (layout.len >= i + 5 and mem.eql(u8, layout[i + 1 .. i + 5], "2006")) {
-                        return chuckResult{
+                        return chunkResult{
                             .prefix = layout[0..i],
                             .chunk = chunk.stdLongYear,
                             .suffix = layout[i + 5 ..],
                         };
                     }
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdUnderDay,
                         .suffix = layout[i + 2 ..],
@@ -1016,14 +1016,14 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                 }
             },
             '3' => {
-                return chuckResult{
+                return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdHour12,
                     .suffix = layout[i + 1 ..],
                 };
             },
             '4' => {
-                return chuckResult{
+                return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdSecond,
                     .suffix = layout[i + 1 ..],
@@ -1031,7 +1031,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             'P' => { // PM
                 if (layout.len >= i + 2 and layout[i + 1] == 'M') {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdPM,
                         .suffix = layout[i + 2 ..],
@@ -1040,7 +1040,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             'p' => { // pm
                 if (layout.len >= i + 2 and layout[i + 1] == 'm') {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdpm,
                         .suffix = layout[i + 2 ..],
@@ -1049,35 +1049,35 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             '-' => {
                 if (layout.len >= i + 7 and mem.eql(u8, layout[i .. i + 7], "-070000")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumSecondsTz,
                         .suffix = layout[i + 7 ..],
                     };
                 }
                 if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "-07:00:00")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumColonSecondsTZ,
                         .suffix = layout[i + 9 ..],
                     };
                 }
                 if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "-0700")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumTZ,
                         .suffix = layout[i + 5 ..],
                     };
                 }
                 if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "-07:00")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumColonTZ,
                         .suffix = layout[i + 6 ..],
                     };
                 }
                 if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "-07")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumShortTZ,
                         .suffix = layout[i + 3 ..],
@@ -1086,35 +1086,35 @@ fn nextStdChunk(layout: []const u8) chuckResult {
             },
             'Z' => { // Z070000, Z07:00:00, Z0700, Z07:00,
                 if (layout.len >= i + 7 and mem.eql(u8, layout[i .. i + 7], "Z070000")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601SecondsTZ,
                         .suffix = layout[i + 7 ..],
                     };
                 }
                 if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "Z07:00:00")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ColonSecondsTZ,
                         .suffix = layout[i + 9 ..],
                     };
                 }
                 if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "Z0700")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601TZ,
                         .suffix = layout[i + 5 ..],
                     };
                 }
                 if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "Z07:00")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ColonTZ,
                         .suffix = layout[i + 6 ..],
                     };
                 }
                 if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "Z07")) {
-                    return chuckResult{
+                    return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ShortTZ,
                         .suffix = layout[i + 6 ..],
@@ -1131,7 +1131,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
                         if (layout[i + 1] == '9') {
                             st = chunk.stdFracSecond9;
                         }
-                        return chuckResult{
+                        return chunkResult{
                             .prefix = layout[0..i],
                             .chunk = st,
                             .suffix = layout[j..],
@@ -1143,7 +1143,7 @@ fn nextStdChunk(layout: []const u8) chuckResult {
         }
     }
 
-    return chuckResult{
+    return chunkResult{
         .prefix = layout,
         .chunk = chunk.none,
         .suffix = "",
