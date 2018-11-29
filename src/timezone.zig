@@ -499,3 +499,7 @@ fn loadLocationFromTZFile(a: *mem.Allocator, name: []const u8, sources: [][]cons
     try loadLocationFile(name, &buf, sources);
     return loadLocationFromTZData(a, name, buf.toSlice());
 }
+
+pub fn load(name: []const u8) !Location {
+    return loadLocationFromTZFile(&dalloc.allocator, name, unix_sources[0..]);
+}

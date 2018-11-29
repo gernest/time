@@ -132,11 +132,16 @@ const format_tests = []formatTest{
 };
 
 test "TestFormat" {
-    var ts = time.unix(0, 1233810057012345600, timezone.utc_local);
+    var tz = try timezone.load("US/Pacific");
+    defer tz.deinit();
+    var ts = time.unix(0, 1233810057012345600, tz);
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     for (format_tests) |value| {
         try ts.format(&buf, value.format);
-        warn("{}: formtat = {} output= {}\n", value.name, value.format, buf.toSlice());
+        const got = buf.toSlice();
+        if (!std.mem.eql(u8, got, value.result)) {
+            warn("{}: expected {} got {}\n", value.name, value.result, got);
+        }
     }
 }

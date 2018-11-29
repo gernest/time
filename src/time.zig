@@ -283,10 +283,10 @@ pub const Time = struct {
                     try stream.print("{}", ddate.month.string());
                 },
                 chunk.stdNumMonth => {
-                    try stream.writeIntNe(usize, @enumToInt(ddate.month));
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
                 },
                 chunk.stdZeroMonth => {
-                    try stream.writeIntNe(usize, @enumToInt(ddate.month));
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 2);
                 },
                 chunk.stdWeekDay => {
                     const wk = self.weekday();
@@ -297,19 +297,19 @@ pub const Time = struct {
                     try stream.print("{}", wk.string());
                 },
                 chunk.stdDay => {
-                    try stream.print("{}", ddate.day);
+                    try appendInt(stream, ddate.day, 0);
                 },
                 chunk.stdUnderDay => {
                     if (ddate.day < 10) {
                         try stream.print("{}", " ");
                     }
-                    try stream.print("{}", ddate.day);
+                    try appendInt(stream, ddate.day, 0);
                 },
                 chunk.stdZeroDay => {
-                    try stream.print("{}", ddate.day);
+                    try appendInt(stream, ddate.day, 2);
                 },
                 chunk.stdHour => {
-                    try stream.print("{}", clock_value.hour);
+                    try appendInt(stream, clock_value.hour, 2);
                 },
                 chunk.stdHour12 => {
                     // Noon is 12PM, midnight is 12AM.
@@ -317,7 +317,7 @@ pub const Time = struct {
                     if (hr == 0) {
                         hr = 12;
                     }
-                    try stream.print("{}", hr);
+                    try appendInt(stream, hr, 0);
                 },
                 chunk.stdZeroHour12 => {
                     // Noon is 12PM, midnight is 12AM.
@@ -325,19 +325,19 @@ pub const Time = struct {
                     if (hr == 0) {
                         hr = 12;
                     }
-                    try stream.print("{}", hr);
+                    try appendInt(stream, hr, 2);
                 },
                 chunk.stdMinute => {
-                    try stream.print("{}", clock_value.min);
+                    try appendInt(stream, clock_value.min, 0);
                 },
                 chunk.stdZeroMinute => {
-                    try stream.print("{}", clock_value.min);
+                    try appendInt(stream, clock_value.min, 2);
                 },
                 chunk.stdSecond => {
-                    try stream.print("{}", clock_value.sec);
+                    try appendInt(stream, clock_value.sec, 0);
                 },
                 chunk.stdZeroSecond => {
-                    try stream.print("{}", clock_value.sec);
+                    try appendInt(stream, clock_value.sec, 2);
                 },
                 chunk.stdPM => {
                     if (clock_value.hour >= 12) {
@@ -373,7 +373,7 @@ pub const Time = struct {
                     } else {
                         try stream.write("+");
                     }
-                    try stream.print("{}", @divTrunc(z, 60));
+                    try appendInt(stream, @divTrunc(z, 60), 2);
                     if (ctx.chunk.eql(chunk.stdISO8601ColonTZ) or
                         ctx.chunk.eql(chunk.stdNumColonTZ) or
                         ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ) or
@@ -383,7 +383,7 @@ pub const Time = struct {
                         try stream.write(":");
                     }
                     if (!ctx.chunk.eql(chunk.stdNumShortTZ) and !ctx.chunk.eql(chunk.stdISO8601ShortTZ)) {
-                        try stream.print("{}", @mod(z, 60));
+                        try appendInt(stream, @mod(z, 60), 2);
                     }
                     if (ctx.chunk.eql(chunk.stdISO8601SecondsTZ) or
                         ctx.chunk.eql(chunk.stdNumSecondsTz) or
@@ -395,7 +395,7 @@ pub const Time = struct {
                         {
                             try stream.write(":");
                         }
-                        try stream.print("{}", @mod(abs_offset, 60));
+                        try appendInt(stream, @mod(abs_offset, 60), 2);
                     }
                 },
                 chunk.stdTZ => {
@@ -410,8 +410,8 @@ pub const Time = struct {
                     } else {
                         try stream.write("+");
                     }
-                    try stream.print("{}", @divTrunc(z, 60));
-                    try stream.print("{}", @mod(z, 60));
+                    try appendInt(stream, @divTrunc(z, 60), 2);
+                    try appendInt(stream, @mod(z, 60), 2);
                 },
                 chunk.stdFracSecond0, chunk.stdFracSecond9 => {
                     try stream.print("{}", self.nanosecond());
@@ -438,7 +438,7 @@ fn appendInt(stream: var, x: isize, width: usize) !void {
     }
     i -= 1;
     buf[i] = '0' + @intCast(u8, u);
-    var w = buf.len - 1;
+    var w = buf.len - i;
     while (w < width) : (w += 1) {
         try stream.write("0");
     }
