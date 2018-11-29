@@ -283,10 +283,10 @@ pub const Time = struct {
                     try stream.print("{}", ddate.month.string());
                 },
                 chunk.stdNumMonth => {
-                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month) + 1), 0);
                 },
                 chunk.stdZeroMonth => {
-                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 2);
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month) + 1), 2);
                 },
                 chunk.stdWeekDay => {
                     const wk = self.weekday();
