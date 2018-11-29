@@ -414,7 +414,7 @@ pub const Time = struct {
                     try appendInt(stream, @mod(z, 60), 2);
                 },
                 chunk.stdFracSecond0, chunk.stdFracSecond9 => {
-                    try stream.print("{}", self.nanosecond());
+                    try formatNano(stream, @intCast(usize, self.nanosecond()), ctx.args_shift.?, ctx.chunk.eql(chunk.stdFracSecond9));
                 },
                 else => unreachable,
             }
@@ -444,6 +444,29 @@ fn appendInt(stream: var, x: isize, width: usize) !void {
     }
     const v = buf[i..];
     try stream.write(v);
+}
+
+fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
+    var u = nanosec;
+    var buf = []u8{0} ** 9;
+    var start = buf.len;
+    while (start > 0) {
+        start -= 1;
+        buf[start] = @intCast(u8, @mod(u, 10) + '0');
+        u /= 10;
+    }
+    var x = n;
+    if (x > 9) {
+        x = 9;
+    }
+    if (trim) {
+        while (x > 0 and buf[x - 1] == '0') : (x -= 1) {}
+        if (x == 0) {
+            return;
+        }
+    }
+    try stream.write(".");
+    try stream.write(buf[0..x]);
 }
 
 const ZoneDetail = struct {
@@ -901,6 +924,7 @@ const chunkResult = struct {
     prefix: []const u8,
     suffix: []const u8,
     chunk: chunk,
+    args_shift: ?usize,
 };
 const std0x = []chunk{
     chunk.stdZeroMonth,
@@ -922,6 +946,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                             .prefix = layout[0..i],
                             .chunk = chunk.stdLongMonth,
                             .suffix = layout[i + 7 ..],
+                            .args_shift = null,
                         };
                     }
                     if (!startsWithLowerCase(layout[i + 3 ..])) {
@@ -929,6 +954,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                             .prefix = layout[0..i],
                             .chunk = chunk.stdMonth,
                             .suffix = layout[i + 3 ..],
+                            .args_shift = null,
                         };
                     }
                 }
@@ -941,6 +967,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                                 .prefix = layout[0..i],
                                 .chunk = chunk.stdLongWeekDay,
                                 .suffix = layout[i + 6 ..],
+                                .args_shift = null,
                             };
                         }
                         if (!startsWithLowerCase(layout[i + 3 ..])) {
@@ -948,6 +975,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                                 .prefix = layout[0..i],
                                 .chunk = chunk.stdWeekDay,
                                 .suffix = layout[i + 3 ..],
+                                .args_shift = null,
                             };
                         }
                     }
@@ -956,6 +984,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                             .prefix = layout[0..i],
                             .chunk = chunk.stdTZ,
                             .suffix = layout[i + 3 ..],
+                            .args_shift = null,
                         };
                     }
                 }
@@ -967,6 +996,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = std0x[x],
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -976,12 +1006,14 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdHour,
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
                     };
                 }
                 return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdNumMonth,
                     .suffix = layout[i + 1 ..],
+                    .args_shift = null,
                 };
             },
             '2' => { // 2006, 2
@@ -990,12 +1022,14 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdLongYear,
                         .suffix = layout[i + 4 ..],
+                        .args_shift = null,
                     };
                 }
                 return chunkResult{
                     .prefix = layout[0..i],
                     .chunk = chunk.stdDay,
                     .suffix = layout[i + 1 ..],
+                    .args_shift = null,
                 };
             },
             '_' => { // _2, _2006
@@ -1006,12 +1040,14 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                             .prefix = layout[0..i],
                             .chunk = chunk.stdLongYear,
                             .suffix = layout[i + 5 ..],
+                            .args_shift = null,
                         };
                     }
                     return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = chunk.stdUnderDay,
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -1020,6 +1056,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                     .prefix = layout[0..i],
                     .chunk = chunk.stdHour12,
                     .suffix = layout[i + 1 ..],
+                    .args_shift = null,
                 };
             },
             '4' => {
@@ -1027,6 +1064,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                     .prefix = layout[0..i],
                     .chunk = chunk.stdSecond,
                     .suffix = layout[i + 1 ..],
+                    .args_shift = null,
                 };
             },
             'P' => { // PM
@@ -1035,6 +1073,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdPM,
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -1044,6 +1083,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdpm,
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -1053,6 +1093,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumSecondsTz,
                         .suffix = layout[i + 7 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "-07:00:00")) {
@@ -1060,6 +1101,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumColonSecondsTZ,
                         .suffix = layout[i + 9 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "-0700")) {
@@ -1067,6 +1109,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumTZ,
                         .suffix = layout[i + 5 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "-07:00")) {
@@ -1074,6 +1117,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumColonTZ,
                         .suffix = layout[i + 6 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "-07")) {
@@ -1081,6 +1125,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdNumShortTZ,
                         .suffix = layout[i + 3 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -1090,6 +1135,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601SecondsTZ,
                         .suffix = layout[i + 7 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 9 and mem.eql(u8, layout[i .. i + 9], "Z07:00:00")) {
@@ -1097,6 +1143,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ColonSecondsTZ,
                         .suffix = layout[i + 9 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 5 and mem.eql(u8, layout[i .. i + 5], "Z0700")) {
@@ -1104,6 +1151,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601TZ,
                         .suffix = layout[i + 5 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 6 and mem.eql(u8, layout[i .. i + 6], "Z07:00")) {
@@ -1111,6 +1159,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ColonTZ,
                         .suffix = layout[i + 6 ..],
+                        .args_shift = null,
                     };
                 }
                 if (layout.len >= i + 3 and mem.eql(u8, layout[i .. i + 3], "Z07")) {
@@ -1118,6 +1167,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdISO8601ShortTZ,
                         .suffix = layout[i + 6 ..],
+                        .args_shift = null,
                     };
                 }
             },
@@ -1135,6 +1185,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                             .prefix = layout[0..i],
                             .chunk = st,
                             .suffix = layout[j..],
+                            .args_shift = j - (i + 1),
                         };
                     }
                 }
@@ -1147,6 +1198,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
         .prefix = layout,
         .chunk = chunk.none,
         .suffix = "",
+        .args_shift = null,
     };
 }
 
