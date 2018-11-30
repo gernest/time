@@ -1,7 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
 const time = @import("./src/time.zig");
-const timezone = @import("./src/timezone.zig");
 
 test "now" {
     var now = time.now();
