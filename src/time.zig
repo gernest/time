@@ -980,6 +980,119 @@ pub const Duration = struct {
     pub fn init(v: i64) Duration {
         return Duration{ .value = v };
     }
+
+    const fracRes = struct {
+        nw: usize,
+        nv: u64,
+    };
+
+    // fmtFrac formats the fraction of v/10**prec (e.g., ".12345") into the
+    // tail of buf, omitting trailing zeros. It omits the decimal
+    // point too when the fraction is 0. It returns the index where the
+    // output bytes begin and the value v/10**prec.
+    fn fmtFrac(buf: []u8, value: u64, prec: usize) fracRes {
+        // Omit trailing zeros up to and including decimal point.
+        var w = buf.len;
+        var v = value;
+        var i: usize = 0;
+        var print: bool = false;
+        while (i < prec) : (i += 1) {
+            const digit = @mod(v, 10);
+            print = print or digit != 0;
+            if (print) {
+                w -= 1;
+                buf[w] = @intCast(u8, digit) + '0';
+            }
+            v /= 10;
+        }
+        if (print) {
+            w -= 1;
+            buf[w] = '.';
+        }
+        return fracRes{ .nw = w, .nv = v };
+    }
+
+    fn fmtInt(buf: []u8, value: u64) usize {
+        var w = buf.len;
+        var v = value;
+        if (v == 0) {
+            w -= 1;
+            buf[w] = '0';
+        } else {
+            while (v > 0) {
+                w -= 1;
+                buf[w] = @intCast(u8, @mod(v, 10)) + '0';
+                v /= 10;
+            }
+        }
+        return w;
+    }
+
+    pub fn string(self: Duration) []const u8 {
+        var buf: [32]u8 = undefined;
+        var w = buf.len;
+        var u = @intCast(u64, self.value);
+        const neg = self.value < 0;
+        if (neg) {
+            u = @intCast(u64, -self.value);
+        }
+        if (u < @intCast(u64, Second.value)) {
+            // Special case: if duration is smaller than a second,
+            // use smaller units, like 1.2ms
+            var prec: usize = 0;
+            w -= 1;
+            buf[w] = 's';
+            w -= 1;
+            if (u == 0) {
+                const s = "0s";
+                return s[0..];
+            } else if (u < @intCast(u64, Microsecond.value)) {
+                // print nanoseconds
+                prec = 0;
+                buf[w] = 'n';
+            } else if (u < @intCast(u64, Millisecond.value)) {
+                // print microseconds
+                prec = 3;
+                // U+00B5 'µ' micro sign == 0xC2 0xB5
+                w -= 1;
+                mem.copy(u8, buf[w..], "µ");
+            } else {
+                prec = 6;
+                buf[w] = 'm';
+            }
+            const r = fmtFrac(buf[0..w], u, prec);
+            w = r.nw;
+            u = r.nv;
+            w = fmtInt(buf[0..w], u);
+        } else {
+            w -= 1;
+            buf[w] = 's';
+            const r = fmtFrac(buf[0..w], u, 9);
+            w = r.nw;
+            u = r.nv;
+            w = fmtInt(buf[0..w], @mod(u, 60));
+            u /= 60;
+            // u is now integer minutes
+            if (u > 0) {
+                w -= 1;
+                buf[w] = 'm';
+                w = fmtInt(buf[0..w], @mod(u, 60));
+                u /= 60;
+                // u is now integer hours
+                // Stop at hours because days can be different lengths.
+                if (u > 0) {
+                    w -= 1;
+                    buf[w] = 'h';
+                    w = fmtInt(buf[0..w], u);
+                }
+            }
+        }
+        if (neg) {
+            w -= 1;
+            buf[w] = '-';
+        }
+        return buf[w..];
+    }
 };
 
 pub const Nanosecond = Duration.init(1);
