@@ -21,7 +21,7 @@ const posix = std.os.posix;
 // -----------
 const max_file_size: usize = 10 << 20;
 var dalloc = std.heap.DirectAllocator.init();
-pub var utc_local = Location.init(&dalloc.allocator, "UTC");
+pub var utc_local = &Location.init(&dalloc.allocator, "UTC");
 
 pub fn getLocal() Location {
     return initLocation();
@@ -552,7 +552,7 @@ const nsecShift = 30;
 pub const Time = struct {
     wall: u64,
     ext: i64,
-    loc: ?Location,
+    loc: ?*Location,
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -603,7 +603,7 @@ pub const Time = struct {
     /// It is called when computing a presentation property like Month or Hour.
     fn abs(self: Time) u64 {
         var usec = self.unixSec();
-        if (self.loc) |*value| {
+        if (self.loc) |value| {
             const d = value.lookup(usec);
             usec += @intCast(i64, d.offset);
         }
@@ -1215,7 +1215,7 @@ fn unixTime(sec: i64, nsec: i32) Time {
     return unixTimeWithLoc(sec, nsec, local);
 }
 
-fn unixTimeWithLoc(sec: i64, nsec: i32, loc: Location) Time {
+fn unixTimeWithLoc(sec: i64, nsec: i32, loc: *Location) Time {
     return Time{
         .wall = @intCast(u64, nsec),
         .ext = sec + unixToInternal,
@@ -1223,7 +1223,7 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: Location) Time {
     };
 }
 
-pub fn unix(sec: i64, nsec: i64, local: Location) Time {
+pub fn unix(sec: i64, nsec: i64, local: *Location) Time {
     var x = sec;
     var y = nsec;
     const exp = @floatToInt(i64, 1e9);
