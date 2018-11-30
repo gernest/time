@@ -6,7 +6,6 @@
 
 const std = @import("std");
 const time = @import("time.zig");
-const timezone = @import("timezone.zig");
 const mem = std.mem;
 const warn = std.debug.warn;
 
@@ -84,7 +83,7 @@ fn same(t: time.Time, u: *parsedTime) bool {
 
 test "TestSecondsToUTC" {
     for (utc_tests) |ts| {
-        var tm = time.unix(ts.seconds, 0, timezone.utc_local);
+        var tm = time.unix(ts.seconds, 0, time.utc_local);
         const ns = tm.unix();
         if (ns != ts.seconds) {
             warn("SecondsToUTC({}).Seconds() = {}\n", ts.seconds, ns);
@@ -132,7 +131,7 @@ const format_tests = []formatTest{
 };
 
 test "TestFormat" {
-    var tz = try timezone.load("US/Pacific");
+    var tz = try time.load("US/Pacific");
     defer tz.deinit();
     var ts = time.unix(0, 1233810057012345600, tz);
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
