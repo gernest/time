@@ -84,7 +84,7 @@ fn same(t: time.Time, u: *parsedTime) bool {
 
 test "TestSecondsToUTC" {
     for (utc_tests) |ts| {
-        var tm = time.unix(ts.seconds, 0, time.utc_local);
+        var tm = time.unix(ts.seconds, 0, Location.utc_local);
         const ns = tm.unix();
         if (ns != ts.seconds) {
             warn("SecondsToUTC({}).Seconds() = {}\n", ts.seconds, ns);

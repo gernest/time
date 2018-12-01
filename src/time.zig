@@ -19,9 +19,6 @@ const posix = std.os.posix;
 // -----------
 // Timezone
 // -----------
-const max_file_size: usize = 10 << 20;
-var dalloc = std.heap.DirectAllocator.init();
-pub var utc_local = Location.init(&dalloc.allocator, "UTC");
 
 pub const Location = struct {
     name: []const u8,
@@ -66,6 +63,9 @@ pub const Location = struct {
     // transitions.
     const alpha: i64 = -1 << 63;
     const omega: i64 = 1 << 63 - 1;
+    const max_file_size: usize = 10 << 20;
+    var dalloc = std.heap.DirectAllocator.init();
+    pub var utc_local = Location.init(&dalloc.allocator, "UTC");
 
     fn init(a: *mem.Allocator, name: []const u8) Location {
         var arena = std.heap.ArenaAllocator.init(a);
