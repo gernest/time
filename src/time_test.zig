@@ -131,7 +131,7 @@ const format_tests = []formatTest{
 };
 
 test "TestFormat" {
-    var tz = try time.load("US/Pacific");
+    var tz = try time.Location.load("US/Pacific");
     defer tz.deinit();
     var ts = time.unix(0, 1233810057012345600, tz);
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
