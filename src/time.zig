@@ -1319,10 +1319,12 @@ pub fn date(
 
     // Normalize month, overflowing into year
     var m = @intCast(isize, @enumToInt(v_month)) - 1;
+    warn("{}\n", m);
     var r = norm(v_year, m, 12);
-    var v_year = r.hi;
+    v_year = r.hi;
     m = r.lo;
-    v_month = @intToEnum(@intCast(usize, m) + 1);
+    v_month = @intToEnum(Month, @intCast(usize, m) + 1);
+    warn("{}\n", v_month);
 
     // Normalize nsec, sec, min, hour, overflowing into day.
     r = norm(sec, v_nsec, 1e9);
@@ -1331,20 +1333,29 @@ pub fn date(
     r = norm(min, v_sec, 60);
     v_min = r.hi;
     v_sec = r.lo;
-    r = norm(v_hour, v_min);
+    r = norm(v_hour, v_min, 60);
     v_hour = r.hi;
     v_min = r.lo;
+    r = norm(v_day, v_hour, 24);
+    v_day = r.hi;
+    v_hour = r.lo;
 
     var y = @intCast(u64, @intCast(i64, v_year) - absoluteZeroYear);
+
     // Compute days since the absolute epoch.
 
     // Add in days from 400-year cycles.
-    var n = v_year / 400;
+    var n = @divTrunc(y, 400);
     y -= (400 * n);
     var d = daysPer400Years * n;
-    // Add in 100-year cycles.
 
-    n = y / 100;
+    // Add in 100-year cycles.
+    n = @divTrunc(y, 100);
+    y -= 100 * n;
+    d += daysPer100Years * n;
+
+    // Add in 4-year cycles.
+    n = @divTrunc(y, 4);
     y -= 4 * n;
     d += daysPer4Years * n;
 
@@ -1360,26 +1371,27 @@ pub fn date(
 
     // Add in days before today.
     d += @intCast(u64, v_day - 1);
+
     // Add in time elapsed today.
     var abs = d * secondsPerDay;
     abs += @intCast(u64, hour * secondsPerHour + min * secondsPerMinute + sec);
-    var unix = @intCast(i64, abs) + (absoluteToInternal + internalToUnix);
+    var unix_value = @intCast(i64, abs) + (absoluteToInternal + internalToUnix);
 
     // Look for zone offset for t, so we can adjust to UTC.
     // The lookup function expects UTC, so we pass t in the
     // hope that it will not be too close to a zone transition,
     // and then adjust if it is.
-    var zn = loc.lookup(unix);
+    var zn = loc.lookup(unix_value);
     if (zn.offset != 0) {
-        const utc_value = unix - @intCast(i64, zn.offset);
+        const utc_value = unix_value - @intCast(i64, zn.offset);
         if (utc_value < zn.start) {
             zn = loc.lookup(zn.start - 1);
         } else if (utc_value >= zn.end) {
             zn = loc.lookup(zn.end);
         }
-        unix -= @intCast(i64, zn.offset);
+        unix_value -= @intCast(i64, zn.offset);
     }
-    return unixTime(unix, @intCast(i32, v_nsec), loc);
+    return unixTimeWithLoc(unix_value, @intCast(i32, v_nsec), loc);
 }
 
 /// ISO 8601 year and week number
@@ -1410,18 +1422,18 @@ fn absWeekday(abs: u64) Weekday {
 }
 
 pub const Month = enum(usize) {
-    January,
-    February,
-    March,
-    April,
-    May,
-    June,
-    July,
-    August,
-    September,
-    October,
-    November,
-    December,
+    January = 1,
+    February = 2,
+    March = 3,
+    April = 4,
+    May = 5,
+    June = 6,
+    July = 7,
+    August = 8,
+    September = 9,
+    October = 10,
+    November = 11,
+    December = 12,
 
     pub fn string(self: Month) []const u8 {
         const m = @enumToInt(self);
@@ -1502,6 +1514,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
     } else {
         begin = daysBefore[month];
     }
+    month += 1;
     details.day = details.day - begin + 1;
     details.month = @intToEnum(Month, month);
     return details;
