@@ -1144,6 +1144,50 @@ pub const Duration = struct {
         }
         return buf[w..];
     }
+
+    /// nanoseconds returns the duration as an integer nanosecond count.
+    pub fn nanoseconds(self: Duration) i64 {
+        return self.value;
+    }
+
+    // These methods return float64 because the dominant
+    // use case is for printing a floating point number like 1.5s, and
+    // a truncation to integer would make them not useful in those cases.
+    // Splitting the integer and fraction ourselves guarantees that
+    // converting the returned float64 to an integer rounds the same
+    // way that a pure integer conversion would have, even in cases
+    // where, say, float64(d.Nanoseconds())/1e9 would have rounded
+    // differently.
+
+    /// Seconds returns the duration as a floating point number of seconds.
+    pub fn seconds(self: Duration) f64 {
+        const sec = @divTrunc(self.value, Second.value);
+        const nsec = @mod(self.value, Second.value);
+        return @intToFloat(f64, sec) + @intToFloat(f64, nsec) / 1e9;
+    }
+
+    /// Minutes returns the duration as a floating point number of minutes.
+    pub fn minutes(self: Duration) f64 {
+        const min = @divTrunc(self.value, Minute.value);
+        const nsec = @mod(self.value, Minute.value);
+        return @intToFloat(f64, min) + @intToFloat(f64, nsec) / (60 * 1e9);
+    }
+
+    // Hours returns the duration as a floating point number of hours.
+    pub fn hours(self: Duration) f64 {
+        const hour = @divTrunc(self.value, Hour.value);
+        const nsec = @mod(self.value, Hour.value);
+        return @intToFloat(f64, hour) + @intToFloat(f64, nsec) / (60 * 60 * 1e9);
+    }
+
+    /// Truncate returns the result of rounding d toward zero to a multiple of m.
+    /// If m <= 0, Truncate returns d unchanged.
+    pub fn truncate(self: Duration, m: Duration) Duration {
+        if (m.value <= 0) {
+            return self;
+        }
+        return init(self.value - @mod(d.value, m.value));
+    }
 };
 
 /// ISO 8601 year and week number
