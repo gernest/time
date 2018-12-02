@@ -7,7 +7,6 @@
 const std = @import("std");
 const mem = std.mem;
 const builtin = @import("builtin");
-const timezone = @import("zig");
 const Os = builtin.Os;
 const warn = std.debug.warn;
 
