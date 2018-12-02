@@ -964,6 +964,31 @@ pub const Time = struct {
             }
         }
     }
+
+    pub fn add(self: Time, d: Duration) Time {
+        var dsec = @intCast(i64, d.value, 1e9);
+        var nnsec = self.nsec() + @intCast(i32, @mod(d.value, 1e9));
+        if (nnsec >= 1e9) {
+            dsec += 1;
+            nsec -= 1e9;
+        } else if (nnsec < 0) {
+            dsec -= 1;
+            nsec += 1e9;
+        }
+        var cp = self;
+        var t = &cp;
+        t.wall = (t.wall and ~nsecMask) | @intCast(u64, nnsec); // update nsec
+        t.addSec(dsec);
+        if (t.wall & hasMonotonic != 0) {
+            const te = t.ext + @intCast(i64, d.value);
+            if (d.value < 0 and te > t.ext or d.value > 0 and te < t.ext) {
+                t.stripMono();
+            } else {
+                t.ext = te;
+            }
+        }
+        return cp;
+    }
 };
 
 fn appendInt(stream: var, x: isize, width: usize) !void {
