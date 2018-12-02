@@ -1029,19 +1029,20 @@ pub const Time = struct {
         }
     }
 
+    /// add adds returns a new Time with duration added to self.
     pub fn add(self: Time, d: Duration) Time {
-        var dsec = @intCast(i64, d.value, 1e9);
-        var nnsec = self.nsec() + @intCast(i32, @mod(d.value, 1e9));
-        if (nnsec >= 1e9) {
+        var dsec = @divTrunc(d.value, i64(1e9));
+        var nsec_value = self.nsec() + @intCast(i32, @mod(d.value, i64(1e9)));
+        if (nsec_value >= i32(1e9)) {
             dsec += 1;
-            nsec -= 1e9;
-        } else if (nnsec < 0) {
+            nsec_value -= i32(1e9);
+        } else if (nsec_value < 0) {
             dsec -= 1;
-            nsec += 1e9;
+            nsec_value += i32(1e9);
         }
         var cp = self;
         var t = &cp;
-        t.wall = (t.wall and ~nsecMask) | @intCast(u64, nnsec); // update nsec
+        t.wall = (t.wall & ~nsecMask) | @intCast(u64, nsec_value); // update nsec
         t.addSec(dsec);
         if (t.wall & hasMonotonic != 0) {
             const te = t.ext + @intCast(i64, d.value);
