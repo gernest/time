@@ -1258,6 +1258,30 @@ pub const Duration = struct {
     }
 };
 
+const normRes = struct {
+    hi: isize,
+    lo: isize,
+};
+
+// norm returns nhi, nlo such that
+//  hi * base + lo == nhi * base + nlo
+//  0 <= nlo < base
+fn norm(i: isize, o: isize, base: isize) normRes {
+    var hi = i;
+    var lo = o;
+    if (lo < 0) {
+        const n = @divTrunc(-lo - 1, base) + 1;
+        hi -= n;
+        lo += (n * base);
+    }
+    if (lo >= base) {
+        const n = @divTrunc(lo, base);
+        hi += n;
+        lo -= (n * base);
+    }
+    return normRes{ .hi = hi, .lo = lo };
+}
+
 /// ISO 8601 year and week number
 pub const ISOWeek = struct {
     year: isize,
