@@ -1028,6 +1028,9 @@ pub const Duration = struct {
     pub const Minute = init(60 * Second.value);
     pub const Hour = init(60 * Minute.value);
 
+    const minDuration: i64 = -1 << 63;
+    const maxDuration: i64 = (1 << 63) - 1;
+
     pub fn init(v: i64) Duration {
         return Duration{ .value = v };
     }
@@ -1187,6 +1190,46 @@ pub const Duration = struct {
             return self;
         }
         return init(self.value - @mod(d.value, m.value));
+    }
+
+    // lessThanHalf reports whether x+x < y but avoids overflow,
+    // assuming x and y are both positive (Duration is signed).
+    fn lessThanHalf(self: Duration, m: Duration) bool {
+        const x = @intCast(u64, self.value);
+        return x + x < @intCast(u64, m.value);
+    }
+
+    // Round returns the result of rounding d to the nearest multiple of m.
+    // The rounding behavior for halfway values is to round away from zero.
+    // If the result exceeds the maximum (or minimum)
+    // value that can be stored in a Duration,
+    // Round returns the maximum (or minimum) duration.
+    // If m <= 0, Round returns d unchanged.
+    pub fn round(self: Duration, m: Duration) Duration {
+        if (v.value <= 0) {
+            return d;
+        }
+        var r = init(@mod(self.value, m.value));
+        if (self.value < 0) {
+            r.value = -r.value;
+            if (r.lessThanHalf(m)) {
+                return init(self.value + r.value);
+            }
+            const d = self.value - m.value + r.value;
+            if (d < self.value) {
+                return init(d);
+            }
+            return init(minDuration);
+        }
+
+        if (r.lessThanHalf(m)) {
+            return init(self.value - r.value);
+        }
+        const d = self.value + m.value - r.value;
+        if (d > self.value) {
+            return init(d);
+        }
+        return init(maxDuration);
     }
 };
 
