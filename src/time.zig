@@ -795,6 +795,53 @@ pub const Time = struct {
         return self.appendFormat(&stream.stream, layout);
     }
 
+    fn appendInt(stream: var, x: isize, width: usize) !void {
+        var u = @intCast(usize, x);
+        if (x < 0) {
+            try stream.write("-");
+            u = @intCast(usize, -x);
+        }
+        var buf: [20]u8 = undefined;
+        var i = buf.len;
+        while (u > 10) {
+            i -= 1;
+            const q = @divTrunc(u, 10);
+            buf[i] = @intCast(u8, '0' + u - q * 10);
+            u = q;
+        }
+        i -= 1;
+        buf[i] = '0' + @intCast(u8, u);
+        var w = buf.len - i;
+        while (w < width) : (w += 1) {
+            try stream.write("0");
+        }
+        const v = buf[i..];
+        try stream.write(v);
+    }
+
+    fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
+        var u = nanosec;
+        var buf = []u8{0} ** 9;
+        var start = buf.len;
+        while (start > 0) {
+            start -= 1;
+            buf[start] = @intCast(u8, @mod(u, 10) + '0');
+            u /= 10;
+        }
+        var x = n;
+        if (x > 9) {
+            x = 9;
+        }
+        if (trim) {
+            while (x > 0 and buf[x - 1] == '0') : (x -= 1) {}
+            if (x == 0) {
+                return;
+            }
+        }
+        try stream.write(".");
+        try stream.write(buf[0..x]);
+    }
+
     pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
         const abs_value = self.abs();
         const tz = self.zone().?;
@@ -989,53 +1036,6 @@ pub const Time = struct {
         return cp;
     }
 };
-
-fn appendInt(stream: var, x: isize, width: usize) !void {
-    var u = @intCast(usize, x);
-    if (x < 0) {
-        try stream.write("-");
-        u = @intCast(usize, -x);
-    }
-    var buf: [20]u8 = undefined;
-    var i = buf.len;
-    while (u > 10) {
-        i -= 1;
-        const q = @divTrunc(u, 10);
-        buf[i] = @intCast(u8, '0' + u - q * 10);
-        u = q;
-    }
-    i -= 1;
-    buf[i] = '0' + @intCast(u8, u);
-    var w = buf.len - i;
-    while (w < width) : (w += 1) {
-        try stream.write("0");
-    }
-    const v = buf[i..];
-    try stream.write(v);
-}
-
-fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
-    var u = nanosec;
-    var buf = []u8{0} ** 9;
-    var start = buf.len;
-    while (start > 0) {
-        start -= 1;
-        buf[start] = @intCast(u8, @mod(u, 10) + '0');
-        u /= 10;
-    }
-    var x = n;
-    if (x > 9) {
-        x = 9;
-    }
-    if (trim) {
-        while (x > 0 and buf[x - 1] == '0') : (x -= 1) {}
-        if (x == 0) {
-            return;
-        }
-    }
-    try stream.write(".");
-    try stream.write(buf[0..x]);
-}
 
 const ZoneDetail = struct {
     name: []const u8,
