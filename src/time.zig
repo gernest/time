@@ -1282,6 +1282,106 @@ fn norm(i: isize, o: isize, base: isize) normRes {
     return normRes{ .hi = hi, .lo = lo };
 }
 
+/// date returns the Time corresponding to
+///  yyyy-mm-dd hh:mm:ss + nsec nanoseconds
+/// in the appropriate zone for that time in the given location.
+///
+/// The month, day, hour, min, sec, and nsec values may be outside
+/// their usual ranges and will be normalized during the conversion.
+/// For example, October 32 converts to November 1.
+///
+/// A daylight savings time transition skips or repeats times.
+/// For example, in the United States, March 13, 2011 2:15am never occurred,
+/// while November 6, 2011 1:15am occurred twice. In such cases, the
+/// choice of time zone, and therefore the time, is not well-defined.
+/// Date returns a time that is correct in one of the two zones involved
+/// in the transition, but it does not guarantee which.
+///
+/// Date panics if loc is nil.
+pub fn date(
+    year: isize,
+    month: Month,
+    day: isize,
+    hour: isize,
+    min: isize,
+    sec: isize,
+    nsec: isize,
+    loc: Location,
+) Time {
+    var v_year = year;
+    var v_month = month;
+    var v_day = day;
+    var v_hour = hour;
+    var v_min = min;
+    var v_sec = sec;
+    var v_nsec = nsec;
+    var v_loc = loc;
+
+    // Normalize month, overflowing into year
+    var m = @intCast(isize, @enumToInt(v_month)) - 1;
+    var r = norm(v_year, m, 12);
+    var v_year = r.hi;
+    m = r.lo;
+    v_month = @intToEnum(@intCast(usize, m) + 1);
+
+    // Normalize nsec, sec, min, hour, overflowing into day.
+    r = norm(sec, v_nsec, 1e9);
+    v_sec = r.hi;
+    v_nsec = r.lo;
+    r = norm(min, v_sec, 60);
+    v_min = r.hi;
+    v_sec = r.lo;
+    r = norm(v_hour, v_min);
+    v_hour = r.hi;
+    v_min = r.lo;
+
+    var y = @intCast(u64, @intCast(i64, v_year) - absoluteZeroYear);
+    // Compute days since the absolute epoch.
+
+    // Add in days from 400-year cycles.
+    var n = v_year / 400;
+    y -= (400 * n);
+    var d = daysPer400Years * n;
+    // Add in 100-year cycles.
+
+    n = y / 100;
+    y -= 4 * n;
+    d += daysPer4Years * n;
+
+    // Add in non-leap years.
+    n = y;
+    d += 365 * n;
+
+    // Add in days before this month.
+    d += @intCast(u64, daysBefore[@enumToInt(v_month) - 1]);
+    if (isLeap(v_year) and @enumToInt(v_month) >= @enumToInt(Month.March)) {
+        d += 1; // February 29
+    }
+
+    // Add in days before today.
+    d += @intCast(u64, v_day - 1);
+    // Add in time elapsed today.
+    var abs = d * secondsPerDay;
+    abs += @intCast(u64, hour * secondsPerHour + min * secondsPerMinute + sec);
+    var unix = @intCast(i64, abs) + (absoluteToInternal + internalToUnix);
+
+    // Look for zone offset for t, so we can adjust to UTC.
+    // The lookup function expects UTC, so we pass t in the
+    // hope that it will not be too close to a zone transition,
+    // and then adjust if it is.
+    var zn = loc.lookup(unix);
+    if (zn.offset != 0) {
+        const utc_value = unix - @intCast(i64, zn.offset);
+        if (utc_value < zn.start) {
+            zn = loc.lookup(zn.start - 1);
+        } else if (utc_value >= zn.end) {
+            zn = loc.lookup(zn.end);
+        }
+        unix -= @intCast(i64, zn.offset);
+    }
+    return unixTime(unix, @intCast(i32, v_nsec), loc);
+}
+
 /// ISO 8601 year and week number
 pub const ISOWeek = struct {
     year: isize,
