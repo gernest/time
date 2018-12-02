@@ -577,7 +577,52 @@ pub const Time = struct {
     }
 
     fn addSec(self: *Time, d: i64) void {
+        if ((self.wall & hasMonotonic) != 0) {
+            const s = @intCast(i64, self.wall << 1 >> (nsecShift + 1));
+            const dsec = s + d;
+            if (0 <= dsec and dsec <= (1 << 33) - 1) {
+                self.wall = self.wall & nsecMask | @intCast(u64, dsec) << nsecShift | hasMonotonic;
+                return;
+            }
+            // Wall second now out of range for packed field.
+            // Move to ext
+            self.stripMono();
+        }
         self.ext += d;
+    }
+
+    fn stripMono(self: *Time) void {
+        if ((self.wall & hasMonotonic) != 0) {
+            self.ext = self.sec();
+            self.wall &= nsecMask;
+        }
+    }
+
+    fn setLoc(self: *Time, l: Location) void {
+        self.stripMono();
+        self.loc - l;
+    }
+
+    fn setMono(self: *Time, m: i64) void {
+        if ((self.wall & hasMonotonic) == 0) {
+            const s = self.ext;
+            if (sec < minWall or maxWall < sec) {
+                return;
+            }
+            self.wall |= hasMonotonic | @intCast(u64, sec - minWall) << nsecShift;
+        }
+        t.ext = m;
+    }
+    // mono returns t's monotonic clock reading.
+    // It returns 0 for a missing reading.
+    // This function is used only for testing,
+    // so it's OK that technically 0 is a valid
+    // monotonic clock reading as well.
+    fn mono(self: *Time) i64 {
+        if ((self.wall & hasMonotonic) == 0) {
+            return 0;
+        }
+        return self.ext;
     }
 
     pub fn isZero(self: Time) bool {
