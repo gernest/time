@@ -789,6 +789,22 @@ pub const Time = struct {
         };
     }
 
+    /// format returns a textual representation of the time value formatted
+    /// according to layout, which defines the format by showing how the reference
+    /// time, defined to be
+    ///   Mon Jan 2 15:04:05 -0700 MST 2006
+    /// would be displayed if it were the value; it serves as an example of the
+    /// desired output. The same display rules will then be applied to the time
+    /// value.
+    ///
+    /// A fractional second is represented by adding a period and zeros
+    /// to the end of the seconds section of layout string, as in "15:04:05.000"
+    /// to format a time stamp with millisecond precision.
+    ///
+    /// Predefined layouts ANSIC, UnixDate, RFC3339 and others describe standard
+    /// and convenient representations of the reference time. For more information
+    /// about the formats and the definition of the reference time, see the
+    /// documentation for ANSIC and the other constants defined by this package.
     pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {
         try out.resize(0);
         var stream = std.io.BufferOutStream.init(out);
@@ -842,6 +858,8 @@ pub const Time = struct {
         try stream.write(buf[0..x]);
     }
 
+    /// appendFormat is like Format but appends the textual
+    /// representation to b
     pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
         const abs_value = self.abs();
         const tz = self.zone().?;
