@@ -10,6 +10,7 @@ const Location = time.Location;
 const mem = std.mem;
 const warn = std.debug.warn;
 
+const faild_test = error.Failed;
 const January = time.Month.January;
 const April = time.Month.April;
 const September = time.Month.September;
@@ -62,6 +63,11 @@ const utc_tests = []TimeTest{
     TimeTest{ .seconds = 978220860, .golden = parsedTime.init(2000, December, 31, 0, 1, 0, 0, Sunday, 0, "UTC") },
 };
 
+const nano_tests = []TimeTest{
+    TimeTest{ .seconds = 0, .golden = parsedTime.init(1970, January, 1, 0, 0, 0, 1e8, Thursday, 0, "UTC") },
+    TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 20, 4, 26, 2e8, Wednesday, 0, "UTC") },
+};
+
 fn same(t: time.Time, u: *parsedTime) bool {
     const date = t.date();
     const clock = t.clock();
@@ -94,6 +100,19 @@ test "TestSecondsToUTC" {
         if (!same(tm, &golden)) {
             warn("wrong utc time\n");
             return error.WrongUTCTime;
+        }
+    }
+}
+
+test "TestNanosecondsToUTC" {
+    for (nano_tests) |tv| {
+        var golden = tv.golden;
+        const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
+        var tm = time.unix(0, nsec, Location.utc_local);
+        const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
+        if (new_nsec != nsec) {
+            warn("NanosecondsToUTC({}).Nanoseconds() = {}\n", nsec, new_nsec);
+            return faild_test;
         }
     }
 }
