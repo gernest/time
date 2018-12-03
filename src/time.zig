@@ -1650,13 +1650,12 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: Location) Time {
 pub fn unix(sec: i64, nsec: i64, local: Location) Time {
     var x = sec;
     var y = nsec;
-    const exp = @floatToInt(i64, 1e9);
-    if (nsec < 0 or nsec >= exp) {
-        const n = @divTrunc(nsec, exp);
+    if (nsec < 0 or nsec >= i64(1e9)) {
+        const n = @divTrunc(nsec, i64(1e9));
         x += n;
-        y -= (n * exp);
+        y -= (n * i64(1e9));
         if (y < 0) {
-            y += exp;
+            y += i64(1e9);
             x -= 1;
         }
     }
