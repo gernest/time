@@ -114,6 +114,10 @@ test "TestNanosecondsToUTC" {
             warn("NanosecondsToUTC({}).Nanoseconds() = {}\n", nsec, new_nsec);
             return faild_test;
         }
+        if (!same(tm, &golden)) {
+            warn("wrong utc time\n");
+            return faild_test;
+        }
     }
 }
 
