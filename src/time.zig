@@ -891,10 +891,10 @@ pub const Time = struct {
                     try stream.print("{}", ddate.month.string());
                 },
                 chunk.stdNumMonth => {
-                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month) + 1), 0);
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
                 },
                 chunk.stdZeroMonth => {
-                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month) + 1), 2);
+                    try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 2);
                 },
                 chunk.stdWeekDay => {
                     const wk = self.weekday();
@@ -1456,7 +1456,7 @@ pub const Month = enum(usize) {
     pub fn string(self: Month) []const u8 {
         const m = @enumToInt(self);
         if (@enumToInt(Month.January) <= m and m <= @enumToInt(Month.December)) {
-            return months[m];
+            return months[m - 1];
         }
         unreachable;
     }
