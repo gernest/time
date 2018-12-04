@@ -1054,6 +1054,91 @@ pub const Time = struct {
         }
         return cp;
     }
+
+    const divResult = struct {
+        qmod: isize,
+        r: Duration,
+    };
+
+    // div divides self by d and returns the quotient parity and remainder.
+    // We don't use the quotient parity anymore (round half up instead of round to even)
+    // but it's still here in case we change our minds.
+    fn div(self: Time, d: Duration) divResult {
+        var neg = false;
+        var nsec_value = self.nsec();
+        var sec_value = self.sec();
+        if (sec_value < 0) {
+            // Operate on absolute value.
+            neg = true;
+            sec_value = -sec_value;
+            if (nsec_value < 0) {
+                nsec_value += i32(1e9);
+                sec_value -= 1;
+            }
+        }
+        var res = divResult{ .qmod = 0, .r = Duration.init(0) };
+        if (d.value < @mod(Duration.Second.value, d.value * 2)) {
+            res.qmod = @intCast(isize, @divTrunc(nsec_value, @intCast(i32, d.value))) & 1;
+            res.r = Duration.init(@intCast(i64, @mod(nsec_value, @intCast(i32, d.value))));
+        } else if (@mod(d.value, Duration.Second.value) == 0) {
+            const d1 = @divTrunc(d.value, Second.value);
+            res.qmod = @intCast(isize, @divTrunc(sec_value, d1)) & 1;
+            res.r = Duration.init(@mod(sec_value, d1) * Duration.Second.value + @intCast(i64, nsec_value));
+        } else {
+            var s = @intCast(u64, sec_value);
+            var tmp = (s >> 32) * u64(1e9);
+            var u_1 = tmp >> 32;
+            var u_0 = tmp << 32;
+            tmp = (s & 0xFFFFFFFF) * u64(1e9);
+            var u_0x = u_0;
+            u_0 = u_0 + tmp;
+            if (u_0 < u_0x) {
+                u_1 += 1;
+            }
+            u_0x = u_0;
+            u_0 = u_0 + @intCast(u64, nsec_value);
+            if (u_0 < u_0x) {
+                u_1 += 1;
+            }
+            // Compute remainder by subtracting r<<k for decreasing k.
+            // Quotient parity is whether we subtract on last round.
+            var d1 = d.value;
+            while ((d1 >> 63) != 1) {
+                d1 <<= 1;
+            }
+            var d0 = u64(0);
+            while (true) {
+                res.qmod = 0;
+                if (u_1 > d1 or u_1 == d1 and u_0 >= d0) {
+                    res.qmod = 1;
+                    u_0x = u_0;
+                    u_0 = u_0 - d0;
+                    if (u_0 > u_0x) {
+                        u_1 -= 1;
+                    }
+                    u_1 -= d1;
+                    if (d1 == 0 and d0 == @intCast(u64, d.value)) {
+                        break;
+                    }
+                    d0 >>= 1;
+                    d0 |= (d1 & 1) << 63;
+                    d1 >>= 1;
+                }
+                res.r = Duration.init(@intCast(i64, u_0));
+            }
+            if (neg and res.r.value != 0) {
+                // If input was negative and not an exact multiple of d, we computed q, r such that
+                //  q*d + r = -t
+                // But the right answers are given by -(q-1), d-r:
+                //  q*d + r = -t
+                //  -q*d - r = t
+                //  -(q-1)*d + (d - r) = t
+                res.qmod ^= 1;
+                res.r = Duration.init(d.value - res.r.value);
+            }
+            return res;
+        }
+    }
 };
 
 const ZoneDetail = struct {
