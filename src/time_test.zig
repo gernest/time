@@ -68,6 +68,16 @@ const nano_tests = []TimeTest{
     TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 20, 4, 26, 2e8, Wednesday, 0, "UTC") },
 };
 
+const local_tests = []TimeTest{
+    TimeTest{ .seconds = 0, .golden = parsedTime.init(1969, December, 31, 16, 0, 0, 0, Wednesday, -8 * 60 * 60, "PST") },
+    TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 13, 4, 26, 0, Wednesday, -7 * 60 * 60, "PDT") },
+};
+
+const nano_local_tests = []TimeTest{
+    TimeTest{ .seconds = 0, .golden = parsedTime.init(1969, December, 31, 16, 0, 0, 0, Wednesday, -8 * 60 * 60, "PST") },
+    TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 13, 4, 26, 3e8, Wednesday, -7 * 60 * 60, "PDT") },
+};
+
 fn same(t: time.Time, u: *parsedTime) bool {
     const date = t.date();
     const clock = t.clock();
@@ -116,6 +126,28 @@ test "TestNanosecondsToUTC" {
         }
         if (!same(tm, &golden)) {
             warn("wrong utc time\n");
+            return faild_test;
+        }
+    }
+}
+
+test "TestSecondsToLocalTime" {
+    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+    for (local_tests) |tv| {
+        var golden = tv.golden;
+        const sec = tv.seconds;
+        var loc = try Location.load("US/Pacific");
+        defer loc.deinit();
+        var tm = time.unix(sec, 0, loc);
+        const new_sec = tm.unix();
+        if (new_sec != sec) {
+            warn("SecondsToLocalTime({}).Nanoseconds() = {}\n", sec, new_sec);
+            return faild_test;
+        }
+        if (!same(tm, &golden)) {
+            try tm.string(&buf);
+            warn("wrong local time time {}\n", buf.toSlice());
             return faild_test;
         }
     }
