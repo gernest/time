@@ -134,11 +134,11 @@ test "TestNanosecondsToUTC" {
 test "TestSecondsToLocalTime" {
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
+    var loc = try Location.load("US/Pacific");
+    defer loc.deinit();
     for (local_tests) |tv| {
         var golden = tv.golden;
         const sec = tv.seconds;
-        var loc = try Location.load("US/Pacific");
-        defer loc.deinit();
         var tm = time.unix(sec, 0, loc);
         const new_sec = tm.unix();
         if (new_sec != sec) {
@@ -148,6 +148,25 @@ test "TestSecondsToLocalTime" {
         if (!same(tm, &golden)) {
             try tm.string(&buf);
             warn("wrong local time time {}\n", buf.toSlice());
+            return faild_test;
+        }
+    }
+}
+
+test "TestNanosecondsToUTC" {
+    var loc = try Location.load("US/Pacific");
+    defer loc.deinit();
+    for (nano_local_tests) |tv| {
+        var golden = tv.golden;
+        const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
+        var tm = time.unix(0, nsec, loc);
+        const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
+        if (new_nsec != nsec) {
+            warn("NanosecondsToLocalTime({}).Nanoseconds() = {}\n", nsec, new_nsec);
+            return faild_test;
+        }
+        if (!same(tm, &golden)) {
+            warn("wrong NanosecondsToLocalTime\n");
             return faild_test;
         }
     }
