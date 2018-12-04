@@ -789,6 +789,34 @@ pub const Time = struct {
         };
     }
 
+    fn string(self: Time, out: *std.Buffer) !void {
+        try self.format(out, "2006-01-02 15:04:05.999999999 -0700 MST");
+        // Format monotonic clock reading as m=±ddd.nnnnnnnnn.
+        if ((self.wall & hasMonotonic) != 0) {
+            var stream = &std.io.BufferOutStream.init(out).stream;
+            var m2 = @intCast(u64, self.ext);
+            var sign: u8 = '+';
+            if (self.ext < 0) {
+                sign = '-';
+                m2 = @intCast(u64, -self.ext);
+            }
+            var m1 = @divTrunc(m2, u64(1e9));
+            m2 = @mod(m2, u64(1e9));
+            var m0 = @divTrunc(m1, u64(1e9));
+            m1 = @mod(m1, u64(1e9));
+            try out.append("m=");
+            try out.appendByte(sign);
+            var wid: usize = 0;
+            if (m0 != 0) {
+                try appendInt(stream, @intCast(isize, m0), 0);
+                wid = 9;
+            }
+            try appendInt(stream, @intCast(isize, m1), wid);
+            try out.append(".");
+            try appendInt(stream, @intCast(isize, m2), 9);
+        }
+    }
+
     /// format returns a textual representation of the time value formatted
     /// according to layout, which defines the format by showing how the reference
     /// time, defined to be
