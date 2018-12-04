@@ -10,7 +10,7 @@ const Location = time.Location;
 const mem = std.mem;
 const warn = std.debug.warn;
 
-const faild_test = error.Failed;
+const failed_test = error.Failed;
 const January = time.Month.January;
 const April = time.Month.April;
 const September = time.Month.September;
@@ -104,12 +104,12 @@ test "TestSecondsToUTC" {
         const ns = tm.unix();
         if (ns != ts.seconds) {
             warn("SecondsToUTC({}).Seconds() = {}\n", ts.seconds, ns);
-            return error.WrongUnixSeconds;
+            return failed_test;
         }
         var golden = ts.golden;
         if (!same(tm, &golden)) {
             warn("wrong utc time\n");
-            return error.WrongUTCTime;
+            return failed_test;
         }
     }
 }
@@ -122,11 +122,11 @@ test "TestNanosecondsToUTC" {
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
         if (new_nsec != nsec) {
             warn("NanosecondsToUTC({}).Nanoseconds() = {}\n", nsec, new_nsec);
-            return faild_test;
+            return failed_test;
         }
         if (!same(tm, &golden)) {
             warn("wrong utc time\n");
-            return faild_test;
+            return failed_test;
         }
     }
 }
@@ -143,12 +143,12 @@ test "TestSecondsToLocalTime" {
         const new_sec = tm.unix();
         if (new_sec != sec) {
             warn("SecondsToLocalTime({}).Nanoseconds() = {}\n", sec, new_sec);
-            return faild_test;
+            return failed_test;
         }
         if (!same(tm, &golden)) {
             try tm.string(&buf);
             warn("wrong local time time {}\n", buf.toSlice());
-            return faild_test;
+            return failed_test;
         }
     }
 }
@@ -163,11 +163,11 @@ test "TestNanosecondsToUTC" {
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
         if (new_nsec != nsec) {
             warn("NanosecondsToLocalTime({}).Nanoseconds() = {}\n", nsec, new_nsec);
-            return faild_test;
+            return failed_test;
         }
         if (!same(tm, &golden)) {
             warn("wrong NanosecondsToLocalTime\n");
-            return faild_test;
+            return failed_test;
         }
     }
 }
