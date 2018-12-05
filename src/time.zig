@@ -547,6 +547,7 @@ const minWall = wallToInternal; // year 1885
 const nsecMask: u64 = (1 << 30) - 1;
 const nsecShift = 30;
 
+const context = @This();
 pub const Time = struct {
     wall: u64,
     ext: i64,
@@ -588,6 +589,30 @@ pub const Time = struct {
             self.stripMono();
         }
         self.ext += d;
+    }
+
+    /// addDate returns the time corresponding to adding the
+    /// given number of years, months, and days to t.
+    /// For example, addDate(-1, 2, 3) applied to January 1, 2011
+    /// returns March 4, 2010.
+    ///
+    /// addDate normalizes its result in the same way that Date does,
+    /// so, for example, adding one month to October 31 yields
+    /// December 1, the normalized form for November 31.
+    pub fn addDate(self: Time, years: isize, number_of_months: isize, number_of_days: isize) Time {
+        const d = self.date();
+        const c = self.clock();
+        const m = @intCast(isize, @enumToInt(d.month)) + number_of_months;
+        return context.date(
+            d.year + years,
+            @intToEnum(Month, @intCast(usize, m)),
+            d.day + number_of_days,
+            c.hour,
+            c.min,
+            c.sec,
+            @intCast(isize, self.nsec()),
+            self.loc.?,
+        );
     }
 
     fn stripMono(self: *Time) void {
