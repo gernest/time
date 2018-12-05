@@ -622,9 +622,9 @@ pub const Time = struct {
         }
     }
 
-    fn setLoc(self: *Time, l: Location) void {
+    pub fn setLoc(self: *Time, l: Location) void {
         self.stripMono();
-        self.loc - l;
+        self.loc = l;
     }
 
     fn setMono(self: *Time, m: i64) void {
