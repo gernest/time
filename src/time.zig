@@ -1255,6 +1255,12 @@ pub const Time = struct {
             self.loc.?,
         );
     }
+
+    pub fn beginningOfWeek(self: Time) Time {
+        var t = self.beginningOfDay();
+        const week_day = @intCast(isize, @enumToInt(self.weekday()));
+        return self.addDate(0, 0, -week_day);
+    }
 };
 
 const ZoneDetail = struct {
