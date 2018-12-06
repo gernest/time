@@ -1241,6 +1241,20 @@ pub const Time = struct {
             self.loc.?,
         );
     }
+
+    pub fn beginningOfDay(self: Time) Time {
+        const d = self.date();
+        return context.date(
+            d.year,
+            d.month,
+            d.day,
+            0,
+            0,
+            0,
+            0,
+            self.loc.?,
+        );
+    }
 };
 
 const ZoneDetail = struct {
