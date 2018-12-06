@@ -1108,6 +1108,32 @@ pub const Time = struct {
         return cp;
     }
 
+    /// sub returns the duration t-u. If the result exceeds the maximum (or minimum)
+    /// value that can be stored in a Duration, the maximum (or minimum) duration
+    /// will be returned.
+    /// To compute t-d for a duration d, use self.add(-d).
+    pub fn sub(self: Time, u: Time) Duration {
+        if ((self.wall & u.wall & hasMonotonic) != 0) {
+            const te = self.ext;
+            const ue = u.ext;
+            var d = Duration.init(te - ue);
+            if (d.value < 0 and te > ue) {
+                return Duration.maxDuration;
+            }
+            if (d.value > 0 and te < ue) {
+                return Duration.minDuration;
+            }
+            return d;
+        }
+        var d = Duration.init((self.sec() - u.sec()) * Duration.Second.value + (self.nsec() - u.nsec()));
+        if (u.add(d).equal(self)) {
+            return d; // d is correct
+        } else if (self.before(u)) {
+            return Duration.minDuration; // self - u is negative out of range
+        }
+        return Duration.maxDuration; // self - u is positive out of range
+    }
+
     const divResult = struct {
         qmod: isize,
         r: Duration,
