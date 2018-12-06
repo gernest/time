@@ -100,7 +100,7 @@ fn same(t: time.Time, u: *parsedTime) bool {
 
 test "TestSecondsToUTC" {
     for (utc_tests) |ts| {
-        var tm = time.unix(ts.seconds, 0, Location.utc_local);
+        var tm = time.unix(ts.seconds, 0, &Location.utc_local);
         const ns = tm.unix();
         if (ns != ts.seconds) {
             warn("SecondsToUTC({}).Seconds() = {}\n", ts.seconds, ns);
@@ -118,7 +118,7 @@ test "TestNanosecondsToUTC" {
     for (nano_tests) |tv| {
         var golden = tv.golden;
         const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
-        var tm = time.unix(0, nsec, Location.utc_local);
+        var tm = time.unix(0, nsec, &Location.utc_local);
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
         if (new_nsec != nsec) {
             warn("NanosecondsToUTC({}).Nanoseconds() = {}\n", nsec, new_nsec);
@@ -139,7 +139,7 @@ test "TestSecondsToLocalTime" {
     for (local_tests) |tv| {
         var golden = tv.golden;
         const sec = tv.seconds;
-        var tm = time.unix(sec, 0, loc);
+        var tm = time.unix(sec, 0, &loc);
         const new_sec = tm.unix();
         if (new_sec != sec) {
             warn("SecondsToLocalTime({}).Nanoseconds() = {}\n", sec, new_sec);
@@ -159,7 +159,7 @@ test "TestNanosecondsToUTC" {
     for (nano_local_tests) |tv| {
         var golden = tv.golden;
         const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
-        var tm = time.unix(0, nsec, loc);
+        var tm = time.unix(0, nsec, &loc);
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
         if (new_nsec != nsec) {
             warn("NanosecondsToLocalTime({}).Nanoseconds() = {}\n", nsec, new_nsec);
@@ -208,7 +208,7 @@ const format_tests = []formatTest{
 test "TestFormat" {
     var tz = try Location.load("US/Pacific");
     defer tz.deinit();
-    var ts = time.unix(0, 1233810057012345600, tz);
+    var ts = time.unix(0, 1233810057012345600, &tz);
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     for (format_tests) |value| {

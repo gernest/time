@@ -551,7 +551,7 @@ const context = @This();
 pub const Time = struct {
     wall: u64,
     ext: i64,
-    loc: ?Location,
+    loc: ?*Location,
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -671,7 +671,7 @@ pub const Time = struct {
     /// It is called when computing a presentation property like Month or Hour.
     fn abs(self: Time) u64 {
         var usec = self.unixSec();
-        if (self.loc) |*value| {
+        if (self.loc) |value| {
             const d = value.lookup(usec);
             usec += @intCast(i64, d.offset);
         }
@@ -1531,7 +1531,7 @@ pub fn date(
     min: isize,
     sec: isize,
     nsec: isize,
-    loc: Location,
+    loc: *Location,
 ) Time {
     var v_year = year;
     var v_month = month;
@@ -1817,12 +1817,12 @@ const days = [][]const u8{
 pub fn now() Time {
     const bt = timeNow();
     var local = Location.getLocal();
-    return nowWithLoc(local);
+    return nowWithLoc(&local);
 }
 
 /// nowWithLoc returns the current local time and assigns the retuned time to use
 /// local as location data.
-pub fn nowWithLoc(local: Location) Time {
+pub fn nowWithLoc(local: *Location) Time {
     const bt = timeNow();
     const sec = (bt.sec + unix_to_internal) - min_wall;
     if ((@intCast(u64, sec) >> 33) != 0) {
@@ -1844,7 +1844,7 @@ fn unixTime(sec: i64, nsec: i32) Time {
     return unixTimeWithLoc(sec, nsec, local);
 }
 
-fn unixTimeWithLoc(sec: i64, nsec: i32, loc: Location) Time {
+fn unixTimeWithLoc(sec: i64, nsec: i32, loc: *Location) Time {
     return Time{
         .wall = @intCast(u64, nsec),
         .ext = sec + unix_to_internal,
@@ -1852,7 +1852,7 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: Location) Time {
     };
 }
 
-pub fn unix(sec: i64, nsec: i64, local: Location) Time {
+pub fn unix(sec: i64, nsec: i64, local: *Location) Time {
     var x = sec;
     var y = nsec;
     if (nsec < 0 or nsec >= i64(1e9)) {
