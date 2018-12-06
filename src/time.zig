@@ -1218,6 +1218,29 @@ pub const Time = struct {
             return res;
         }
     }
+
+    // these are utility functions that I ported from
+    // github.com/jinzhu/now
+
+    pub fn beginningOfMinute(self: Time) Time {
+        //TODO: this needs truncate to be implemented.
+        return self;
+    }
+
+    pub fn beginningOfHour(self: Time) Time {
+        const d = self.date();
+        const c = self.clock();
+        return context.date(
+            d.year,
+            d.month,
+            d.day,
+            c.hour,
+            0,
+            0,
+            0,
+            self.loc.?,
+        );
+    }
 };
 
 const ZoneDetail = struct {
@@ -1501,12 +1524,10 @@ pub fn date(
 
     // Normalize month, overflowing into year
     var m = @intCast(isize, @enumToInt(v_month)) - 1;
-    warn("{}\n", m);
     var r = norm(v_year, m, 12);
     v_year = r.hi;
     m = r.lo;
     v_month = @intToEnum(Month, @intCast(usize, m) + 1);
-    warn("{}\n", v_month);
 
     // Normalize nsec, sec, min, hour, overflowing into day.
     r = norm(sec, v_nsec, 1e9);
