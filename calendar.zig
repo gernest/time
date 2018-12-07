@@ -3,14 +3,8 @@
 
 const std = @import("std");
 const warn = std.debug.warn;
+const Time = @import("./src/time.zig").Time;
 
-fn month() [4][7]usize {
-    var m: [4][7]usize = undefined;
-    m[0][0] = 2;
-    return m;
-}
-
-test "test" {
-    const m = month();
-    warn("{}\n", m.len);
+pub fn main() void {
+    Time.calendar();
 }

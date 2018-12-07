@@ -605,7 +605,7 @@ pub const Time = struct {
         const m = @intCast(isize, @enumToInt(d.month)) + number_of_months;
         return context.date(
             d.year + years,
-            @intToEnum(Month, @intCast(usize, m)),
+            m,
             d.day + number_of_days,
             c.hour,
             c.min,
@@ -1266,7 +1266,7 @@ pub const Time = struct {
         var d = self.date();
         return context.date(
             d.year,
-            d.month,
+            @intCast(isize, @enumToInt(d.month)),
             1,
             0,
             0,
@@ -1274,6 +1274,11 @@ pub const Time = struct {
             0,
             self.loc.?,
         );
+    }
+
+    pub fn endOfMonth(self: Time) Time {
+        return self.beginningOfMonth().addDate(0, 1, 0).
+            add(Duration.init(-Duration.Hour.value));
     }
 
     fn current_month() [4][7]usize {
@@ -1285,21 +1290,82 @@ pub const Time = struct {
         };
     }
 
-    pub fn calendar() void {
-        var m = current_month();
-        fillMonthDates(m);
-    }
+    const short_days = [][]const u8{
+        "Sun",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thur",
+        "Fri",
+        "Sat",
+    };
 
-    fn fillMonthDates(m: [4][7]usize) void {
+    pub fn calendar() void {
+        var ma = [][7]usize{
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+        };
+        var m = ma[0..];
         var local = Location.getLocal();
         var current_time = nowWithLoc(&local);
+        const today = current_time.day();
         var begin = current_time.beginningOfMonth();
+        var end = current_time.endOfMonth();
         const x = begin.date();
-        var d = daysBefore[@enumToInt(x.month) - 1];
-        if (isLeap(x.year) and @enumToInt(x.month) >= @enumToInt(Month.March)) {
-            d += 1; // February 29
+        const y = end.date();
+        var i: usize = 1;
+        var at = @enumToInt(begin.weekday());
+        var mx: usize = 0;
+        var d: usize = 1;
+        while (mx < m.len) : (mx += 1) {
+            var a = m[mx][0..];
+            while (at < a.len and d <= @intCast(usize, y.day)) : (at += 1) {
+                a[at] = d;
+                d += 1;
+            }
+            at = 0;
         }
-        warn("days {} {}\n", d, x);
+        warn("\n");
+        for (short_days) |ds| {
+            warn("{} |", ds);
+        }
+        warn("\n");
+        for (m) |mv, idx| {
+            for (mv) |dv, vx| {
+                if (idx != 0 and vx == 0 and dv == 0) {
+                    // The pre allocated month buffer is lage enough to span 7
+                    // weeks.
+                    //
+                    // we know for a fact at the first week must have at least 1
+                    // date,any other week that start with 0 date means we are
+                    // past the end of the calendar so no need to keep printing.
+                    return;
+                }
+                if (dv == 0) {
+                    warn("    |");
+                    continue;
+                }
+                if (dv == @intCast(usize, today)) {
+                    if (dv < 10) {
+                        warn(" *{} |", dv);
+                    } else {
+                        warn("*{} |", dv);
+                    }
+                } else {
+                    if (dv < 10) {
+                        warn("  {} |", dv);
+                    } else {
+                        warn(" {} |", dv);
+                    }
+                }
+            }
+            warn("\n");
+        }
+        warn("\n");
     }
 };
 
@@ -1565,7 +1631,7 @@ fn norm(i: isize, o: isize, base: isize) normRes {
 /// Date panics if loc is nil.
 pub fn date(
     year: isize,
-    month: Month,
+    month: isize,
     day: isize,
     hour: isize,
     min: isize,
@@ -1574,7 +1640,6 @@ pub fn date(
     loc: *Location,
 ) Time {
     var v_year = year;
-    var v_month = month;
     var v_day = day;
     var v_hour = hour;
     var v_min = min;
@@ -1583,11 +1648,11 @@ pub fn date(
     var v_loc = loc;
 
     // Normalize month, overflowing into year
-    var m = @intCast(isize, @enumToInt(v_month)) - 1;
+    var m = month - 1;
     var r = norm(v_year, m, 12);
     v_year = r.hi;
     m = r.lo;
-    v_month = @intToEnum(Month, @intCast(usize, m) + 1);
+    var v_month = @intToEnum(Month, @intCast(usize, m) + 1);
 
     // Normalize nsec, sec, min, hour, overflowing into day.
     r = norm(sec, v_nsec, 1e9);
