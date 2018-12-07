@@ -219,3 +219,7 @@ test "TestFormat" {
         }
     }
 }
+
+test "Name" {
+    time.Time.calendar();
+}

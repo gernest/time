@@ -1275,6 +1275,32 @@ pub const Time = struct {
             self.loc.?,
         );
     }
+
+    fn current_month() [4][7]usize {
+        return [4][7]usize{
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+            []usize{0} ** 7,
+        };
+    }
+
+    pub fn calendar() void {
+        var m = current_month();
+        fillMonthDates(m);
+    }
+
+    fn fillMonthDates(m: [4][7]usize) void {
+        var local = Location.getLocal();
+        var current_time = nowWithLoc(&local);
+        var begin = current_time.beginningOfMonth();
+        const x = begin.date();
+        var d = daysBefore[@enumToInt(x.month) - 1];
+        if (isLeap(x.year) and @enumToInt(x.month) >= @enumToInt(Month.March)) {
+            d += 1; // February 29
+        }
+        warn("days {} {}\n", d, x);
+    }
 };
 
 const ZoneDetail = struct {
