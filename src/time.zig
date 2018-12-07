@@ -1261,6 +1261,20 @@ pub const Time = struct {
         const week_day = @intCast(isize, @enumToInt(self.weekday()));
         return self.addDate(0, 0, -week_day);
     }
+
+    pub fn beginningOfMonth(self: Time) Time {
+        var d = self.date();
+        return context.date(
+            d.year,
+            d.month,
+            1,
+            0,
+            0,
+            0,
+            0,
+            self.loc.?,
+        );
+    }
 };
 
 const ZoneDetail = struct {
