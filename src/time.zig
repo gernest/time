@@ -867,7 +867,7 @@ pub const Time = struct {
         }
         var buf: [20]u8 = undefined;
         var i = buf.len;
-        while (u > 10) {
+        while (u >= 10) {
             i -= 1;
             const q = @divTrunc(u, 10);
             buf[i] = @intCast(u8, '0' + u - q * 10);
