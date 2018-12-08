@@ -1295,7 +1295,7 @@ pub const Time = struct {
         "Mon",
         "Tue",
         "Wed",
-        "Thur",
+        "Thu",
         "Fri",
         "Sat",
     };
