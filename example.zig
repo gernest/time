@@ -1,6 +1,7 @@
 const std = @import("std");
 const warn = std.debug.warn;
 const time = @import("./src/time.zig");
+const Duration = time.Duration;
 
 test "now" {
     var local = time.Location.getLocal();
@@ -84,4 +85,27 @@ test "time.format" {
     // StampNano:  Nov 29 05:46:03.000024416
     // OK
     // All tests passed.
+}
+
+test "durations" {
+    // print w0ne hour and 10 secods
+    const hour = Duration.Hour.value;
+    const minute = Duration.Minute.value;
+    const second = Duration.Second.value;
+    var d = Duration.init(hour + minute * 4 + second * 10);
+    warn("duration is {} \n", d.string());
+}
+
+test "addDate" {
+    var local = time.Location.getLocal();
+    var ts = time.now(&local);
+    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+    try ts.string(&buf);
+    warn("\ncurrent time is {}\n", buf.toSlice());
+
+    // let's add 1 year
+    ts = ts.addDate(1, 0, 0);
+    try ts.string(&buf);
+    warn("this time next year is {}\n", buf.toSlice());
 }
