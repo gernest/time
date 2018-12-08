@@ -551,7 +551,7 @@ const context = @This();
 pub const Time = struct {
     wall: u64,
     ext: i64,
-    loc: ?*Location,
+    loc: *Location,
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -611,7 +611,7 @@ pub const Time = struct {
             c.min,
             c.sec,
             @intCast(isize, self.nsec()),
-            self.loc.?,
+            self.loc,
         );
     }
 
@@ -671,10 +671,8 @@ pub const Time = struct {
     /// It is called when computing a presentation property like Month or Hour.
     fn abs(self: Time) u64 {
         var usec = self.unixSec();
-        if (self.loc) |value| {
-            const d = value.lookup(usec);
-            usec += @intCast(i64, d.offset);
-        }
+        const d = self.loc.lookup(usec);
+        usec += @intCast(i64, d.offset);
         return @intCast(u64, usec + (unix_to_internal + internal_to_absolute));
     }
 
@@ -794,15 +792,12 @@ pub const Time = struct {
 
     /// zone computes the time zone in effect at time t, returning the abbreviated
     /// name of the zone (such as "CET") and its offset in seconds east of UTC.
-    pub fn zone(self: Time) ?ZoneDetail {
-        if (self.loc) |v| {
-            const zn = v.lookup(self.unixSec());
-            return ZoneDetail{
-                .name = zn.name,
-                .offset = zn.offset,
-            };
-        }
-        return null;
+    pub fn zone(self: Time) ZoneDetail {
+        const zn = self.loc.lookup(self.unixSec());
+        return ZoneDetail{
+            .name = zn.name,
+            .offset = zn.offset,
+        };
     }
 
     /// utc returns time with the location set to UTC.
@@ -915,7 +910,7 @@ pub const Time = struct {
     /// representation to b
     pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
         const abs_value = self.abs();
-        const tz = self.zone().?;
+        const tz = self.zone();
         const clock_value = self.clock();
         const ddate = self.date();
         var lay = layout;
@@ -1272,7 +1267,7 @@ pub const Time = struct {
             0,
             0,
             0,
-            self.loc.?,
+            self.loc,
         );
     }
 
@@ -1311,7 +1306,7 @@ pub const Time = struct {
         };
         var m = ma[0..];
         var local = Location.getLocal();
-        var current_time = nowWithLoc(&local);
+        var current_time = now(&local);
         const today = current_time.day();
         var begin = current_time.beginningOfMonth();
         var end = current_time.endOfMonth();
@@ -1913,21 +1908,9 @@ const days = [][]const u8{
     "Saturday",
 };
 
-/// now returns the current local time. This function is dog slow and expensive,
-/// because it will call getLocal() that loads system timezone data
-/// every time it is called (no cache).
-///
-/// Instead store getLocal() value somewhere and pass it to nowWithLoc
-/// for faster local time values.
-pub fn now() Time {
-    const bt = timeNow();
-    var local = Location.getLocal();
-    return nowWithLoc(&local);
-}
-
-/// nowWithLoc returns the current local time and assigns the retuned time to use
+/// now returns the current local time and assigns the retuned time to use
 /// local as location data.
-pub fn nowWithLoc(local: *Location) Time {
+pub fn now(local: *Location) Time {
     const bt = timeNow();
     const sec = (bt.sec + unix_to_internal) - min_wall;
     if ((@intCast(u64, sec) >> 33) != 0) {

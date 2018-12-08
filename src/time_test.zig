@@ -84,7 +84,7 @@ fn same(t: time.Time, u: *parsedTime) bool {
     const zone = t.zone();
     const check = date.year != u.year or @enumToInt(date.month) != @enumToInt(u.month) or
         date.day != u.day or clock.hour != u.hour or clock.min != u.minute or clock.sec != u.second or
-        !mem.eql(u8, zone.?.name, u.zone) or zone.?.offset != u.zone_offset;
+        !mem.eql(u8, zone.name, u.zone) or zone.offset != u.zone_offset;
     if (check) {
         return false;
     }

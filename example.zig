@@ -3,7 +3,8 @@ const warn = std.debug.warn;
 const time = @import("./src/time.zig");
 
 test "now" {
-    var now = time.now();
+    var local = time.Location.getLocal();
+    var now = time.now(&local);
 
     warn("\n today's date {}", now.date());
     warn("\n today's time {}", now.clock());
@@ -50,7 +51,9 @@ const format_tests = []formatTest{
 };
 
 test "time.format" {
-    var ts = time.now();
+    var local = time.Location.getLocal();
+    var ts = time.now(&local);
+
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     warn("\n");
