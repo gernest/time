@@ -1077,6 +1077,8 @@ pub const Time = struct {
         }
     }
 
+    pub fn parse(layout: []const u8, value: []const u8, default_location: *Location, local: *Location) !Time {}
+
     /// add adds returns a new Time with duration added to self.
     pub fn add(self: Time, d: Duration) Time {
         var dsec = @divTrunc(d.value, i64(1e9));
