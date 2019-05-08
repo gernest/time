@@ -431,7 +431,7 @@ pub const Location = struct {
     fn initLinux() Location {
         var tz: ?[]const u8 = null;
         if (std.os.getEnvMap(&dalloc.allocator)) |value| {
-            const env = value;
+            var env = value;
             defer env.deinit();
             tz = env.get("TZ");
         } else |err| {}
