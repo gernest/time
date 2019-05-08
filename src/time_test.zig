@@ -8,7 +8,7 @@ const std = @import("std");
 const time = @import("time.zig");
 const Location = time.Location;
 const mem = std.mem;
-const warn = std.debug.warn;
+const testing = std.testing;
 
 const failed_test = error.Failed;
 const January = time.Month.January;
@@ -102,15 +102,9 @@ test "TestSecondsToUTC" {
     for (utc_tests) |ts| {
         var tm = time.unix(ts.seconds, 0, &Location.utc_local);
         const ns = tm.unix();
-        if (ns != ts.seconds) {
-            warn("SecondsToUTC({}).Seconds() = {}\n", ts.seconds, ns);
-            return failed_test;
-        }
+        testing.expectEqual(ns, ts.seconds);
         var golden = ts.golden;
-        if (!same(tm, &golden)) {
-            warn("wrong utc time\n");
-            return failed_test;
-        }
+        testing.expect(same(tm, &golden));
     }
 }
 
@@ -120,14 +114,8 @@ test "TestNanosecondsToUTC" {
         const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
         var tm = time.unix(0, nsec, &Location.utc_local);
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
-        if (new_nsec != nsec) {
-            warn("NanosecondsToUTC({}).Nanoseconds() = {}\n", nsec, new_nsec);
-            return failed_test;
-        }
-        if (!same(tm, &golden)) {
-            warn("wrong utc time\n");
-            return failed_test;
-        }
+        testing.expectEqual(new_nsec, nsec);
+        testing.expect(same(tm, &golden));
     }
 }
 
@@ -141,15 +129,8 @@ test "TestSecondsToLocalTime" {
         const sec = tv.seconds;
         var tm = time.unix(sec, 0, &loc);
         const new_sec = tm.unix();
-        if (new_sec != sec) {
-            warn("SecondsToLocalTime({}).Nanoseconds() = {}\n", sec, new_sec);
-            return failed_test;
-        }
-        if (!same(tm, &golden)) {
-            try tm.string(&buf);
-            warn("wrong local time time {}\n", buf.toSlice());
-            return failed_test;
-        }
+        testing.expectEqual(new_sec, sec);
+        testing.expect(same(tm, &golden));
     }
 }
 
@@ -161,14 +142,8 @@ test "TestNanosecondsToUTC" {
         const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
         var tm = time.unix(0, nsec, &loc);
         const new_nsec = tm.unix() * i64(1e9) + @intCast(i64, tm.nanosecond());
-        if (new_nsec != nsec) {
-            warn("NanosecondsToLocalTime({}).Nanoseconds() = {}\n", nsec, new_nsec);
-            return failed_test;
-        }
-        if (!same(tm, &golden)) {
-            warn("wrong NanosecondsToLocalTime\n");
-            return failed_test;
-        }
+        testing.expectEqual(new_nsec, nsec);
+        testing.expect(same(tm, &golden));
     }
 }
 
@@ -214,12 +189,10 @@ test "TestFormat" {
     for (format_tests) |value| {
         try ts.format(&buf, value.format);
         const got = buf.toSlice();
-        if (!std.mem.eql(u8, got, value.result)) {
-            warn("{}: expected {} got {}\n", value.name, value.result, got);
-        }
+        testing.expect(std.mem.eql(u8, got, value.result));
     }
 }
 
-test "Name" {
+test "calendar" {
     time.Time.calendar();
 }
