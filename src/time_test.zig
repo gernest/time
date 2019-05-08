@@ -196,3 +196,18 @@ test "TestFormat" {
 test "calendar" {
     time.Time.calendar();
 }
+
+fn skip() !void {
+    return error.SkipZigTest;
+}
+
+test "TestFormatSingleDigits" {
+    var buf = &try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+
+    var tt = time.date(2001, 2, 3, 4, 5, 6, 700000000, &Location.utc_local);
+    const ts = formatTest.init("single digit format", "3:4:5", "4:5:6");
+
+    try tt.format(buf, ts.format);
+    testing.expect(buf.eql(ts.result));
+}

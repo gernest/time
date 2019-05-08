@@ -2280,6 +2280,14 @@ fn nextStdChunk(layout: []const u8) chunkResult {
             '4' => {
                 return chunkResult{
                     .prefix = layout[0..i],
+                    .chunk = chunk.stdMinute,
+                    .suffix = layout[i + 1 ..],
+                    .args_shift = null,
+                };
+            },
+            '5' => {
+                return chunkResult{
+                    .prefix = layout[0..i],
                     .chunk = chunk.stdSecond,
                     .suffix = layout[i + 1 ..],
                     .args_shift = null,
