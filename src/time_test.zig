@@ -8,6 +8,7 @@ const std = @import("std");
 const time = @import("time.zig");
 const Location = time.Location;
 const mem = std.mem;
+const math = std.math;
 const testing = std.testing;
 
 const failed_test = error.Failed;
@@ -99,6 +100,7 @@ fn same(t: time.Time, u: *parsedTime) bool {
 }
 
 test "TestSecondsToUTC" {
+    // try skip();
     for (utc_tests) |ts| {
         var tm = time.unix(ts.seconds, 0, &Location.utc_local);
         const ns = tm.unix();
@@ -109,6 +111,7 @@ test "TestSecondsToUTC" {
 }
 
 test "TestNanosecondsToUTC" {
+    // try skip();
     for (nano_tests) |tv| {
         var golden = tv.golden;
         const nsec = tv.seconds * i64(1e9) + @intCast(i64, golden.nanosecond);
@@ -120,6 +123,7 @@ test "TestNanosecondsToUTC" {
 }
 
 test "TestSecondsToLocalTime" {
+    // try skip();
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     var loc = try Location.load("US/Pacific");
@@ -135,6 +139,7 @@ test "TestSecondsToLocalTime" {
 }
 
 test "TestNanosecondsToUTC" {
+    // try skip();
     var loc = try Location.load("US/Pacific");
     defer loc.deinit();
     for (nano_local_tests) |tv| {
@@ -181,6 +186,7 @@ const format_tests = []formatTest{
 };
 
 test "TestFormat" {
+    // try skip();
     var tz = try Location.load("US/Pacific");
     defer tz.deinit();
     var ts = time.unix(0, 1233810057012345600, &tz);
@@ -194,6 +200,7 @@ test "TestFormat" {
 }
 
 test "calendar" {
+    // try skip();
     time.Time.calendar();
 }
 
@@ -202,6 +209,7 @@ fn skip() !void {
 }
 
 test "TestFormatSingleDigits" {
+    // try skip();
     var buf = &try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
 
@@ -210,4 +218,47 @@ test "TestFormatSingleDigits" {
 
     try tt.format(buf, ts.format);
     testing.expect(buf.eql(ts.result));
+}
+
+test "TestFormatShortYear" {
+    // try skip();
+    var buf = &try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+
+    var want = &try std.Buffer.init(std.debug.global_allocator, "");
+    defer want.deinit();
+
+    var stream = &std.io.BufferOutStream.init(want).stream;
+
+    const years = []isize{
+        -100001, -100000, -99999,
+        -10001,  -10000,  -9999,
+        -1001,   -1000,   -999,
+        -101,    -100,    -99,
+        -11,     -10,     -9,
+        -1,      0,       1,
+        9,       10,      11,
+        99,      100,     101,
+        999,     1000,    1001,
+        9999,    10000,   10001,
+        99999,   100000,  100001,
+    };
+    for (years) |y| {
+        const m = @enumToInt(January);
+        const x = @intCast(isize, m);
+        var tt = time.date(y, x, 1, 0, 0, 0, 0, &Location.utc_local);
+        try buf.resize(0);
+        try tt.format(buf, "2006.01.02");
+        try want.resize(0);
+        const day: usize = 1;
+        const month: usize = 1;
+        if (y < 0) {
+            try stream.print("-{d4}.{d2}.{d2}", math.absCast(y), month, day);
+        } else {
+            try stream.print("{d4}.{d2}.{d2}", math.absCast(y), month, day);
+        }
+        if (!buf.eql(want.toSlice())) {
+            std.debug.warn("case: {} expected {} got {}\n", y, want.toSlice(), buf.toSlice());
+        }
+    }
 }

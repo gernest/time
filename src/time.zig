@@ -673,7 +673,9 @@ pub const Time = struct {
         var usec = self.unixSec();
         const d = self.loc.lookup(usec);
         usec += @intCast(i64, d.offset);
-        return @intCast(u64, usec + (unix_to_internal + internal_to_absolute));
+        var result: i64 = undefined;
+        _ = @addWithOverflow(i64, usec, (unix_to_internal + internal_to_absolute), &result);
+        return @bitCast(u64, result);
     }
 
     pub fn date(self: Time) DateDetail {
@@ -860,10 +862,9 @@ pub const Time = struct {
     }
 
     fn appendInt(stream: var, x: isize, width: usize) !void {
-        var u = @intCast(usize, x);
+        var u = std.math.absCast(x);
         if (x < 0) {
             try stream.write("-");
-            u = @intCast(usize, -x);
         }
         var buf: [20]u8 = undefined;
         var i = buf.len;
@@ -1699,9 +1700,10 @@ pub fn date(
 
     // Add in time elapsed today.
     var abs = d * seconds_per_day;
-    abs += @intCast(u64, hour * seconds_per_hour + min * seconds_per_minute + sec);
-    var unix_value = @intCast(i64, abs) + (absolute_to_internal + internal_to_unix);
 
+    abs += @intCast(u64, hour * seconds_per_hour + min * seconds_per_minute + sec);
+    var unix_value: i64 = undefined;
+    _ = @addWithOverflow(i64, @intCast(i64, abs), (absolute_to_internal + internal_to_unix), &unix_value);
     // Look for zone offset for t, so we can adjust to UTC.
     // The lookup function expects UTC, so we pass t in the
     // hope that it will not be too close to a zone transition,
