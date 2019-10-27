@@ -6,21 +6,22 @@
 
 const std = @import("std");
 const time = @import("time.zig");
+
+const April = time.Month.April;
+const December = time.Month.December;
+const January = time.Month.January;
 const Location = time.Location;
-const mem = std.mem;
+const Monday = time.Weekday.Monday;
+const Saturday = time.Weekday.Saturday;
+const September = time.Month.September;
+const Sunday = time.Weekday.Sunday;
+const Thursday = time.Weekday.Thursday;
+const Wednesday = time.Weekday.Wednesday;
 const math = std.math;
+const mem = std.mem;
 const testing = std.testing;
 
 const failed_test = error.Failed;
-const January = time.Month.January;
-const April = time.Month.April;
-const September = time.Month.September;
-const December = time.Month.December;
-const Monday = time.Weekday.Monday;
-const Wednesday = time.Weekday.Wednesday;
-const Thursday = time.Weekday.Thursday;
-const Saturday = time.Weekday.Saturday;
-const Sunday = time.Weekday.Sunday;
 
 const parsedTime = struct {
     year: isize,
@@ -55,7 +56,7 @@ const TimeTest = struct {
     golden: parsedTime,
 };
 
-const utc_tests = []TimeTest{
+const utc_tests = [_]TimeTest{
     TimeTest{ .seconds = 0, .golden = parsedTime.init(1970, January, 1, 0, 0, 0, 0, Thursday, 0, "UTC") },
     TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 20, 4, 26, 0, Wednesday, 0, "UTC") },
     TimeTest{ .seconds = -1221681866, .golden = parsedTime.init(1931, April, 16, 3, 55, 34, 0, Thursday, 0, "UTC") },
@@ -64,17 +65,17 @@ const utc_tests = []TimeTest{
     TimeTest{ .seconds = 978220860, .golden = parsedTime.init(2000, December, 31, 0, 1, 0, 0, Sunday, 0, "UTC") },
 };
 
-const nano_tests = []TimeTest{
+const nano_tests = [_]TimeTest{
     TimeTest{ .seconds = 0, .golden = parsedTime.init(1970, January, 1, 0, 0, 0, 1e8, Thursday, 0, "UTC") },
     TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 20, 4, 26, 2e8, Wednesday, 0, "UTC") },
 };
 
-const local_tests = []TimeTest{
+const local_tests = [_]TimeTest{
     TimeTest{ .seconds = 0, .golden = parsedTime.init(1969, December, 31, 16, 0, 0, 0, Wednesday, -8 * 60 * 60, "PST") },
     TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 13, 4, 26, 0, Wednesday, -7 * 60 * 60, "PDT") },
 };
 
-const nano_local_tests = []TimeTest{
+const nano_local_tests = [_]TimeTest{
     TimeTest{ .seconds = 0, .golden = parsedTime.init(1969, December, 31, 16, 0, 0, 0, Wednesday, -8 * 60 * 60, "PST") },
     TimeTest{ .seconds = 1221681866, .golden = parsedTime.init(2008, September, 17, 13, 4, 26, 3e8, Wednesday, -7 * 60 * 60, "PDT") },
 };
@@ -162,7 +163,7 @@ const formatTest = struct {
     }
 };
 
-const format_tests = []formatTest{
+const format_tests = [_]formatTest{
     formatTest.init("ANSIC", time.ANSIC, "Wed Feb  4 21:00:57 2009"),
     formatTest.init("UnixDate", time.UnixDate, "Wed Feb  4 21:00:57 PST 2009"),
     formatTest.init("RubyDate", time.RubyDate, "Wed Feb 04 21:00:57 -0800 2009"),
@@ -193,7 +194,7 @@ test "TestFormat" {
     var buf = try std.Buffer.init(std.debug.global_allocator, "");
     defer buf.deinit();
     for (format_tests) |value| {
-        try ts.format(&buf, value.format);
+        try ts.formatBuffer(&buf, value.format);
         const got = buf.toSlice();
         testing.expect(std.mem.eql(u8, got, value.result));
     }
@@ -216,8 +217,15 @@ test "TestFormatSingleDigits" {
     var tt = time.date(2001, 2, 3, 4, 5, 6, 700000000, &Location.utc_local);
     const ts = formatTest.init("single digit format", "3:4:5", "4:5:6");
 
-    try tt.format(buf, ts.format);
+    try tt.formatBuffer(buf, ts.format);
     testing.expect(buf.eql(ts.result));
+
+    try buf.resize(0);
+
+    var stream = &std.io.BufferOutStream.init(buf).stream;
+    try stream.print("{}", tt);
+    const want = "2001-02-03 04:05:06.7 +0000 UTC";
+    testing.expect(buf.eql(want));
 }
 
 test "TestFormatShortYear" {
@@ -230,7 +238,7 @@ test "TestFormatShortYear" {
 
     var stream = &std.io.BufferOutStream.init(want).stream;
 
-    const years = []isize{
+    const years = [_]isize{
         -100001, -100000, -99999,
         -10001,  -10000,  -9999,
         -1001,   -1000,   -999,
@@ -248,17 +256,106 @@ test "TestFormatShortYear" {
         const x = @intCast(isize, m);
         var tt = time.date(y, x, 1, 0, 0, 0, 0, &Location.utc_local);
         try buf.resize(0);
-        try tt.format(buf, "2006.01.02");
+        try tt.formatBuffer(buf, "2006.01.02");
         try want.resize(0);
         const day: usize = 1;
         const month: usize = 1;
         if (y < 0) {
-            try stream.print("-{d4}.{d2}.{d2}", math.absCast(y), month, day);
+            try stream.print("-{d:4}.{d:2}.{d:2}", math.absCast(y), month, day);
         } else {
-            try stream.print("{d4}.{d2}.{d2}", math.absCast(y), month, day);
+            try stream.print("{d:4}.{d:2}.{d:2}", math.absCast(y), month, day);
         }
         if (!buf.eql(want.toSlice())) {
             std.debug.warn("case: {} expected {} got {}\n", y, want.toSlice(), buf.toSlice());
         }
     }
+}
+
+test "TestNextStdChunk" {
+    const next_std_chunk_tests = [_][]const u8{
+        "(2006)-(01)-(02)T(15):(04):(05)(Z07:00)",
+        "(2006)-(01)-(02) (002) (15):(04):(05)",
+        "(2006)-(01) (002) (15):(04):(05)",
+        "(2006)-(002) (15):(04):(05)",
+        "(2006)(002)(01) (15):(04):(05)",
+        "(2006)(002)(04) (15):(04):(05)",
+    };
+    var buf = &try std.Buffer.init(std.debug.global_allocator, "");
+    defer buf.deinit();
+    for (next_std_chunk_tests) |marked, i| {
+        try markChunk(buf, marked);
+        testing.expect(buf.eql(marked));
+    }
+}
+
+var tmp: [39]u8 = undefined;
+
+fn removeParen(format: []const u8) []const u8 {
+    var s = tmp[0..format.len];
+    var i: usize = 0;
+    var n = i;
+    while (i < format.len) : (i += 1) {
+        if (format[i] == '(' or format[i] == ')') {
+            continue;
+        }
+        s[n] = format[i];
+        n += 1;
+    }
+    return s[0..n];
+}
+
+fn markChunk(buf: *std.Buffer, format: []const u8) !void {
+    try buf.resize(0);
+    var s = removeParen(format);
+
+    while (s.len > 0) {
+        const ch = time.nextStdChunk(s);
+        try buf.append(ch.prefix);
+        if (ch.chunk != .none) {
+            try buf.append("(");
+            try buf.append(chunName(ch.chunk));
+            try buf.append(")");
+        }
+        s = ch.suffix;
+    }
+}
+
+fn chunName(ch: time.chunk) []const u8 {
+    return switch (ch) {
+        .none => "",
+        .stdLongMonth => "January",
+        .stdMonth => "Jan",
+        .stdNumMonth => "1",
+        .stdZeroMonth => "01",
+        .stdLongWeekDay => "Monday",
+        .stdWeekDay => "Mon",
+        .stdDay => "2",
+        .stdUnderDay => "_2",
+        .stdZeroDay => "02",
+        .stdUnderYearDay => "__2",
+        .stdZeroYearDay => "002",
+        .stdHour => "15",
+        .stdHour12 => "3",
+        .stdZeroHour12 => "03",
+        .stdMinute => "4",
+        .stdZeroMinute => "04",
+        .stdSecond => "5",
+        .stdZeroSecond => "05",
+        .stdLongYear => "2006",
+        .stdYear => "06",
+        .stdPM => "PM",
+        .stdpm => "pm",
+        .stdTZ => "MST",
+        .stdISO8601TZ => "Z0700",
+        .stdISO8601SecondsTZ => "Z070000",
+        .stdISO8601ShortTZ => "Z07",
+        .stdISO8601ColonTZ => "Z07:00",
+        .stdISO8601ColonSecondsTZ => "Z07:00:00",
+        .stdNumTZ => "-0700",
+        .stdNumSecondsTz => "-070000",
+        .stdNumShortTZ => "-07",
+        .stdNumColonTZ => "-07:00",
+        .stdNumColonSecondsTZ => "-07:00:00",
+        else => "unknown",
+    };
 }

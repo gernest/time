@@ -4,25 +4,22 @@
 //
 // Copyright 2018 Geofrey Ernest MIT LICENSE
 
-const std = @import("std");
-const mem = std.mem;
 const builtin = @import("builtin");
+const std = @import("std");
+
 const Os = builtin.Os;
+const darwin = std.os.darwin;
+const linux = std.os.linux;
+const mem = std.mem;
+const posix = std.os.posix;
 const warn = std.debug.warn;
 
 const windows = std.os.windows;
-const linux = std.os.linux;
-const darwin = std.os.darwin;
-const posix = std.os.posix;
-
-// -----------
-// Timezone
-// -----------
 
 pub const Location = struct {
     name: []const u8,
     zone: ?[]zone,
-    tx: ?[]zoneTrans,
+    tx: ?[]ZoneTrans,
     // Most lookups will be for the current time.
     // To avoid the binary search through tx, keep a
     // static one-element cache that gives the correct
@@ -37,6 +34,22 @@ pub const Location = struct {
     cached_zone: ?*zone,
 
     arena: std.heap.ArenaAllocator,
+    const alpha: i64 = -1 << 63;
+    const omega: i64 = 1 << 63 - 1;
+    const max_file_size: usize = 10 << 20;
+    const initLocation = switch (builtin.os) {
+        Os.linux => initLinux,
+        Os.macosx, Os.ios => initDarwin,
+        else => @compileError("Unsupported OS"),
+    };
+    pub var utc_local = Location.init(std.heap.direct_allocator, "UTC");
+    var unix_sources = [_][]const u8{
+        "/usr/share/zoneinfo/",
+        "/usr/share/lib/zoneinfo/",
+        "/usr/lib/locale/TZ/",
+    };
+
+    // readFile reads contents of a file with path and writes the read bytes to buf.
 
     const zone = struct {
         name: []const u8,
@@ -44,7 +57,7 @@ pub const Location = struct {
         is_dst: bool,
     };
 
-    const zoneTrans = struct {
+    const ZoneTrans = struct {
         when: i64,
         index: usize,
         is_std: bool,
@@ -60,11 +73,55 @@ pub const Location = struct {
 
     // alpha and omega are the beginning and end of time for zone
     // transitions.
-    const alpha: i64 = -1 << 63;
-    const omega: i64 = 1 << 63 - 1;
-    const max_file_size: usize = 10 << 20;
-    var dalloc = std.heap.DirectAllocator.init();
-    pub var utc_local = Location.init(&dalloc.allocator, "UTC");
+
+    const dataIO = struct {
+        p: []u8,
+        n: usize,
+
+        fn init(p: []u8) dataIO {
+            return dataIO{
+                .p = p,
+                .n = 0,
+            };
+        }
+
+        fn read(d: *dataIO, p: []u8) usize {
+            if (d.n >= d.p.len) {
+                // end of stream
+                return 0;
+            }
+            const pos = d.n;
+            const offset = pos + p.len;
+            while ((d.n < offset) and (d.n < d.p.len)) : (d.n += 1) {
+                p[d.n - pos] = d.p[d.n];
+            }
+            return d.n - pos;
+        }
+
+        fn big4(d: *dataIO) !i32 {
+            var p: [4]u8 = undefined;
+            const size = d.read(p[0..]);
+            if (size < 4) {
+                return error.BadData;
+            }
+            const o = @intCast(i32, p[3]) | (@intCast(i32, p[2]) << 8) | (@intCast(i32, p[1]) << 16) | (@intCast(i32, p[0]) << 24);
+            return o;
+        }
+
+        // advances the cursor by n. next read will start after skipping the n bytes.
+        fn skip(d: *dataIO, n: usize) void {
+            d.n += n;
+        }
+
+        fn byte(d: *dataIO) !u8 {
+            if (d.n < d.p.len) {
+                const u = d.p[d.n];
+                d.n += 1;
+                return u;
+            }
+            return error.EOF;
+        }
+    };
 
     fn init(a: *mem.Allocator, name: []const u8) Location {
         var arena = std.heap.ArenaAllocator.init(a);
@@ -346,10 +403,10 @@ pub const Location = struct {
         // Now the transition time info.
         i = 0;
         const tx_n = n[@enumToInt(n_value.Time)];
-        var tx_list = try zalloc.alloc(zoneTrans, tx_n);
+        var tx_list = try zalloc.alloc(ZoneTrans, tx_n);
         if (tx_n != 0) {
             while (i < n[@enumToInt(n_value.Time)]) : (i += 1) {
-                var tx: zoneTrans = undefined;
+                var tx: ZoneTrans = undefined;
                 const w = try tx_times_data.big4();
                 tx.when = @intCast(i64, w);
                 if (@intCast(usize, tx_zone[i]) >= zones.len) {
@@ -366,7 +423,7 @@ pub const Location = struct {
             }
             loc.tx = tx_list;
         } else {
-            var ls = []zoneTrans{zoneTrans{
+            var ls = [_]ZoneTrans{ZoneTrans{
                 .when = alpha,
                 .index = 0,
                 .is_std = false,
@@ -378,15 +435,8 @@ pub const Location = struct {
     }
 
     // darwin_sources directory to search for timezone files.
-    var unix_sources = [][]const u8{
-        "/usr/share/zoneinfo/",
-        "/usr/share/lib/zoneinfo/",
-        "/usr/lib/locale/TZ/",
-    };
-
-    // readFile reads contents of a file with path and writes the read bytes to buf.
     fn readFile(path: []const u8, buf: *std.Buffer) !void {
-        var file = try std.os.File.openRead(path);
+        var file = try std.fs.File.openRead(path);
         defer file.close();
         var stream = &file.inStream().stream;
         try stream.readAllBuffer(buf, max_file_size);
@@ -416,13 +466,8 @@ pub const Location = struct {
     }
 
     pub fn load(name: []const u8) !Location {
-        return loadLocationFromTZFile(&dalloc.allocator, name, unix_sources[0..]);
+        return loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..]);
     }
-    const initLocation = switch (builtin.os) {
-        Os.linux => initLinux,
-        Os.macosx, Os.ios => initDarwin,
-        else => @compileError("Unsupported OS"),
-    };
 
     fn initDarwin() Location {
         return initLinux();
@@ -430,20 +475,20 @@ pub const Location = struct {
 
     fn initLinux() Location {
         var tz: ?[]const u8 = null;
-        if (std.os.getEnvMap(&dalloc.allocator)) |value| {
+        if (std.process.getEnvMap(std.heap.direct_allocator)) |value| {
             var env = value;
             defer env.deinit();
             tz = env.get("TZ");
         } else |err| {}
         if (tz) |name| {
             if (name.len != 0 and !mem.eql(u8, name, "UTC")) {
-                if (loadLocationFromTZFile(&dalloc.allocator, name, unix_sources[0..])) |tzone| {
+                if (loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..])) |tzone| {
                     return tzone;
                 } else |err| {}
             }
         } else {
-            var etc = [][]const u8{"/etc/"};
-            if (loadLocationFromTZFile(&dalloc.allocator, "localtime", etc[0..])) |tzone| {
+            var etc = [_][]const u8{"/etc/"};
+            if (loadLocationFromTZFile(std.heap.direct_allocator, "localtime", etc[0..])) |tzone| {
                 var zz = tzone;
                 zz.name = "local";
                 return zz;
@@ -451,55 +496,6 @@ pub const Location = struct {
         }
         return utc_local;
     }
-
-    const dataIO = struct {
-        p: []u8,
-        n: usize,
-
-        fn init(p: []u8) dataIO {
-            return dataIO{
-                .p = p,
-                .n = 0,
-            };
-        }
-
-        fn read(d: *dataIO, p: []u8) usize {
-            if (d.n >= d.p.len) {
-                // end of stream
-                return 0;
-            }
-            const pos = d.n;
-            const offset = pos + p.len;
-            while ((d.n < offset) and (d.n < d.p.len)) : (d.n += 1) {
-                p[d.n - pos] = d.p[d.n];
-            }
-            return d.n - pos;
-        }
-
-        fn big4(d: *dataIO) !i32 {
-            var p: [4]u8 = undefined;
-            const size = d.read(p[0..]);
-            if (size < 4) {
-                return error.BadData;
-            }
-            const o = @intCast(i32, p[3]) | (@intCast(i32, p[2]) << 8) | (@intCast(i32, p[1]) << 16) | (@intCast(i32, p[0]) << 24);
-            return o;
-        }
-
-        // advances the cursor by n. next read will start after skipping the n bytes.
-        fn skip(d: *dataIO, n: usize) void {
-            d.n += n;
-        }
-
-        fn byte(d: *dataIO) !u8 {
-            if (d.n < d.p.len) {
-                const u = d.p[d.n];
-                d.n += 1;
-                return u;
-            }
-            return error.EOF;
-        }
-    };
 
     fn byteString(x: []u8) []u8 {
         for (x) |v, idx| {
@@ -511,9 +507,6 @@ pub const Location = struct {
     }
 };
 
-// -----------
-// TIME
-//-------------
 const seconds_per_minute = 60;
 const seconds_per_hour = 60 * seconds_per_minute;
 const seconds_per_day = 24 * seconds_per_hour;
@@ -548,10 +541,30 @@ const nsec_mask: u64 = (1 << 30) - 1;
 const nsec_shift = 30;
 
 const context = @This();
+
 pub const Time = struct {
     wall: u64,
     ext: i64,
     loc: *Location,
+
+    const short_days = [_][]const u8{
+        "Sun",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+    };
+
+    const divResult = struct {
+        qmod: isize,
+        r: Duration,
+    };
+
+    // div divides self by d and returns the quotient parity and remainder.
+    // We don't use the quotient parity anymore (round half up instead of round to even)
+    // but it's still here in case we change our minds.
 
     fn nsec(self: Time) i32 {
         if (self.wall == 0) {
@@ -591,8 +604,8 @@ pub const Time = struct {
         self.ext += d;
     }
 
-    /// addDate returns the time corresponding to adding the
-    /// given number of years, months, and days to t.
+    /// returns the time corresponding to adding the
+    /// given number of years, months, and days to self.
     /// For example, addDate(-1, 2, 3) applied to January 1, 2011
     /// returns March 4, 2010.
     ///
@@ -622,7 +635,7 @@ pub const Time = struct {
         }
     }
 
-    pub fn setLoc(self: *Time, l: Location) void {
+    pub fn setLoc(self: *Time, l: *Location) void {
         self.stripMono();
         self.loc = l;
     }
@@ -630,12 +643,12 @@ pub const Time = struct {
     fn setMono(self: *Time, m: i64) void {
         if ((self.wall & has_monotonic) == 0) {
             const s = self.ext;
-            if (sec < min_wall or max_wall < sec) {
+            if (s < min_wall or max_wall < s) {
                 return;
             }
-            self.wall |= has_monotonic | @intCast(u64, sec - min_wall) << nsec_shift;
+            self.wall |= has_monotonic | @intCast(u64, s - min_wall) << nsec_shift;
         }
-        t.ext = m;
+        self.ext = m;
     }
     // mono returns t's monotonic clock reading.
     // It returns 0 for a missing reading.
@@ -649,25 +662,34 @@ pub const Time = struct {
         return self.ext;
     }
 
+    /// reports whether self represents the zero time instant,
+    /// January 1, year 1, 00:00:00 UTC.
     pub fn isZero(self: Time) bool {
         return self.sec() == 0 and self.nsec() == 0;
     }
 
+    /// returns true if time self is after time u.
     pub fn after(self: Time, u: Time) bool {
         const ts = self.sec();
         const us = u.sec();
         return ts > us or (ts == us and self.nsec() > u.nsec());
     }
 
+    /// returns true if time self is before u.
     pub fn before(self: Time, u: Time) bool {
         return (self.sec() < u.sec()) or (self.sec() == u.sec() and self.nsec() < u.nsec());
     }
 
+    /// reports whether self and u represent the same time instant.
+    /// Two times can be equal even if they are in different locations.
+    /// For example, 6:00 +0200 CEST and 4:00 UTC are Equal.
+    /// See the documentation on the Time type for the pitfalls of using == with
+    /// Time values; most code should use Equal instead.
     pub fn equal(self: Time, u: Time) bool {
         return self.sec() == u.sec() and self.nsec() == u.nsec();
     }
 
-    /// abs returns the time t as an absolute time, adjusted by the zone offset.
+    /// abs returns the time self as an absolute time, adjusted by the zone offset.
     /// It is called when computing a presentation property like Month or Hour.
     fn abs(self: Time) u64 {
         var usec = self.unixSec();
@@ -697,6 +719,7 @@ pub const Time = struct {
         return d.day;
     }
 
+    /// returns the day of the week specified by self.
     pub fn weekday(self: Time) Weekday {
         return absWeekday(self.abs());
     }
@@ -762,37 +785,37 @@ pub const Time = struct {
         return Clock.absClock(self.abs());
     }
 
-    /// hour returns the hour within the day specified by t, in the range [0, 23].
+    /// returns the hour within the day specified by self, in the range [0, 23].
     pub fn hour(self: Time) isize {
         return @divTrunc(@intCast(isize, self.abs() % seconds_per_day), seconds_per_hour);
     }
 
-    /// Minute returns the minute offset within the hour specified by t, in the
+    /// returns the minute offset within the hour specified by self, in the
     /// range [0, 59].
     pub fn minute(self: Time) isize {
         return @divTrunc(@intCast(isize, self.abs() % seconds_per_hour), seconds_per_minute);
     }
 
-    /// second returns the second offset within the minute specified by t, in the
+    /// returns the second offset within the minute specified by self, in the
     /// range [0, 59].
     pub fn second(self: Time) isize {
         return @intCast(isize, self.abs() % seconds_per_minute);
     }
 
-    /// Nanosecond returns the nanosecond offset within the second specified by t,
+    /// returns the nanosecond offset within the second specified by self,
     /// in the range [0, 999999999].
     pub fn nanosecond(self: Time) isize {
         return @intCast(isize, self.nsec());
     }
 
-    /// yearDay returns the day of the year specified by t, in the range [1,365] for non-leap years,
+    /// returns the day of the year specified by self, in the range [1,365] for non-leap years,
     /// and [1,366] in leap years.
     pub fn yearDay(self: Time) isize {
         const d = absDate(self.abs(), false);
         return d.yday + 1;
     }
 
-    /// zone computes the time zone in effect at time t, returning the abbreviated
+    /// computes the time zone in effect at time t, returning the abbreviated
     /// name of the zone (such as "CET") and its offset in seconds east of UTC.
     pub fn zone(self: Time) ZoneDetail {
         const zn = self.loc.lookup(self.unixSec());
@@ -807,12 +830,12 @@ pub const Time = struct {
         return Time{
             .wall = self.wall,
             .ext = self.ext,
-            .loc = utc_local,
+            .loc = &Location.utc_local,
         };
     }
 
     fn string(self: Time, out: *std.Buffer) !void {
-        try self.format(out, "2006-01-02 15:04:05.999999999 -0700 MST");
+        try self.formatBuffer(out, DefaultFormat);
         // Format monotonic clock reading as m=±ddd.nnnnnnnnn.
         if ((self.wall & has_monotonic) != 0) {
             var stream = &std.io.BufferOutStream.init(out).stream;
@@ -839,7 +862,22 @@ pub const Time = struct {
         }
     }
 
-    /// format returns a textual representation of the time value formatted
+    pub fn format(
+        self: Time,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        ctx: var,
+        comptime Errors: type,
+        output: fn (@typeOf(ctx), []const u8) Errors!void,
+    ) Errors!void {
+        var out: [DefaultFormat.len * 2]u8 = undefined;
+        var a = &std.heap.FixedBufferAllocator.init(out[0..]).allocator;
+        var buf = std.Buffer.init(a, "") catch return;
+        self.string(&buf) catch return;
+        try output(ctx, buf.toSlice());
+    }
+
+    /// writes into out a textual representation of the time value formatted
     /// according to layout, which defines the format by showing how the reference
     /// time, defined to be
     ///   Mon Jan 2 15:04:05 -0700 MST 2006
@@ -855,7 +893,7 @@ pub const Time = struct {
     /// and convenient representations of the reference time. For more information
     /// about the formats and the definition of the reference time, see the
     /// documentation for ANSIC and the other constants defined by this package.
-    pub fn format(self: Time, out: *std.Buffer, layout: []const u8) !void {
+    pub fn formatBuffer(self: Time, out: *std.Buffer, layout: []const u8) !void {
         try out.resize(0);
         var stream = std.io.BufferOutStream.init(out);
         return self.appendFormat(&stream.stream, layout);
@@ -886,7 +924,7 @@ pub const Time = struct {
 
     fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
         var u = nanosec;
-        var buf = []u8{0} ** 9;
+        var buf = [_]u8{0} ** 9;
         var start = buf.len;
         while (start > 0) {
             start -= 1;
@@ -922,53 +960,53 @@ pub const Time = struct {
             }
             lay = ctx.suffix;
             switch (ctx.chunk) {
-                chunk.none => return,
-                chunk.stdYear => {
+                .none => return,
+                .stdYear => {
                     var y = ddate.year;
                     if (y < 0) {
                         y = -y;
                     }
                     try appendInt(stream, @mod(y, 100), 2);
                 },
-                chunk.stdLongYear => {
+                .stdLongYear => {
                     try appendInt(stream, ddate.year, 4);
                 },
-                chunk.stdMonth => {
+                .stdMonth => {
                     try stream.print("{}", ddate.month.string()[0..3]);
                 },
-                chunk.stdLongMonth => {
+                .stdLongMonth => {
                     try stream.print("{}", ddate.month.string());
                 },
-                chunk.stdNumMonth => {
+                .stdNumMonth => {
                     try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
                 },
-                chunk.stdZeroMonth => {
+                .stdZeroMonth => {
                     try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 2);
                 },
-                chunk.stdWeekDay => {
+                .stdWeekDay => {
                     const wk = self.weekday();
                     try stream.print("{}", wk.string()[0..3]);
                 },
-                chunk.stdLongWeekDay => {
+                .stdLongWeekDay => {
                     const wk = self.weekday();
                     try stream.print("{}", wk.string());
                 },
-                chunk.stdDay => {
+                .stdDay => {
                     try appendInt(stream, ddate.day, 0);
                 },
-                chunk.stdUnderDay => {
+                .stdUnderDay => {
                     if (ddate.day < 10) {
                         try stream.print("{}", " ");
                     }
                     try appendInt(stream, ddate.day, 0);
                 },
-                chunk.stdZeroDay => {
+                .stdZeroDay => {
                     try appendInt(stream, ddate.day, 2);
                 },
-                chunk.stdHour => {
+                .stdHour => {
                     try appendInt(stream, clock_value.hour, 2);
                 },
-                chunk.stdHour12 => {
+                .stdHour12 => {
                     // Noon is 12PM, midnight is 12AM.
                     var hr = @mod(clock_value.hour, 12);
                     if (hr == 0) {
@@ -976,7 +1014,7 @@ pub const Time = struct {
                     }
                     try appendInt(stream, hr, 0);
                 },
-                chunk.stdZeroHour12 => {
+                .stdZeroHour12 => {
                     // Noon is 12PM, midnight is 12AM.
                     var hr = @mod(clock_value.hour, 12);
                     if (hr == 0) {
@@ -984,33 +1022,33 @@ pub const Time = struct {
                     }
                     try appendInt(stream, hr, 2);
                 },
-                chunk.stdMinute => {
+                .stdMinute => {
                     try appendInt(stream, clock_value.min, 0);
                 },
-                chunk.stdZeroMinute => {
+                .stdZeroMinute => {
                     try appendInt(stream, clock_value.min, 2);
                 },
-                chunk.stdSecond => {
+                .stdSecond => {
                     try appendInt(stream, clock_value.sec, 0);
                 },
-                chunk.stdZeroSecond => {
+                .stdZeroSecond => {
                     try appendInt(stream, clock_value.sec, 2);
                 },
-                chunk.stdPM => {
+                .stdPM => {
                     if (clock_value.hour >= 12) {
                         try stream.print("{}", "PM");
                     } else {
                         try stream.print("{}", "AM");
                     }
                 },
-                chunk.stdpm => {
+                .stdpm => {
                     if (clock_value.hour >= 12) {
                         try stream.print("{}", "pm");
                     } else {
                         try stream.print("{}", "am");
                     }
                 },
-                chunk.stdISO8601TZ, chunk.stdISO8601ColonTZ, chunk.stdISO8601SecondsTZ, chunk.stdISO8601ShortTZ, chunk.stdISO8601ColonSecondsTZ, chunk.stdNumTZ, chunk.stdNumColonTZ, chunk.stdNumSecondsTz, chunk.stdNumShortTZ, chunk.stdNumColonSecondsTZ => {
+                .stdISO8601TZ, .stdISO8601ColonTZ, .stdISO8601SecondsTZ, .stdISO8601ShortTZ, .stdISO8601ColonSecondsTZ, .stdNumTZ, .stdNumColonTZ, .stdNumSecondsTz, .stdNumShortTZ, .stdNumColonSecondsTZ => {
                     // Ugly special case. We cheat and take the "Z" variants
                     // to mean "the time zone as formatted for ISO 8601".
                     const cond = tz.offset == 0 and (ctx.chunk.eql(chunk.stdISO8601TZ) or
@@ -1055,7 +1093,7 @@ pub const Time = struct {
                         try appendInt(stream, @mod(abs_offset, 60), 2);
                     }
                 },
-                chunk.stdTZ => {
+                .stdTZ => {
                     if (tz.name.len != 0) {
                         try stream.print("{}", tz.name);
                         continue;
@@ -1070,7 +1108,7 @@ pub const Time = struct {
                     try appendInt(stream, @divTrunc(z, 60), 2);
                     try appendInt(stream, @mod(z, 60), 2);
                 },
-                chunk.stdFracSecond0, chunk.stdFracSecond9 => {
+                .stdFracSecond0, .stdFracSecond9 => {
                     try formatNano(stream, @intCast(usize, self.nanosecond()), ctx.args_shift.?, ctx.chunk.eql(chunk.stdFracSecond9));
                 },
                 else => unreachable,
@@ -1078,7 +1116,218 @@ pub const Time = struct {
         }
     }
 
-    pub fn parse(layout: []const u8, value: []const u8, default_location: *Location, local: *Location) !Time {}
+    fn parseInternal(layout: []const u8, value: []const u8, default_location: *Location, local: *Location) !Time {
+        var alayout = layout;
+        var avalue = value;
+        var am_set = false;
+        var pm_set = false;
+
+        var parsed_year: isize = 0;
+        var parsed_month: isize = -1;
+        var parsed_day: isize = -1;
+        var parsed_yday: isize = -1;
+        var parsed_hour: isize = 0;
+        var parsed_min: isize = 0;
+        var parsed_sec: isize = 0;
+        var parsed_nsec: isize = 0;
+        var z: ?*Location = null;
+        var zone_offset: isize = -1;
+        var zone_name = "";
+
+        var lay = layout;
+        var val = value;
+        while (true) {
+            const ctx = nextStdChunk(lay);
+            const std_str = lay[ctx.prefix.len..(lay.len - ctx.suffix.len)];
+            val = try skip(val, ctx.prefix);
+
+            if (ctx.chunk == .none) {
+                if (val.len != 0) {
+                    return error.ExtraText;
+                }
+            }
+            lay = ctx.suffix;
+            switch (ctx.chunk) {
+                .stdYear => {
+                    if (val.len < 2) {
+                        return error.BadValue;
+                    }
+                    const p = val[0..2];
+                    val = val[2..];
+                    var has_err = false;
+                    parsed_year = try std.fmt.parseInt(isize, p, 10);
+                    if (parsed_year >= 69) {
+                        // Unix time starts Dec 31 1969 in some time zones
+                        parsed_year += 1900;
+                    } else {
+                        parsed_year += 2000;
+                    }
+                },
+                .stdLongYear => {
+                    if (val.len < 4 or !isDigit(val, 0)) {
+                        return error.BadValue;
+                    }
+                    const p = val[0..4];
+                    val = val[4..];
+                    parsed_year = try std.fmt.parseInt(isize, p, 10);
+                },
+                .stdMonth => {
+                    const idx = try lookup(short_month_names, val);
+                    parsed_month = @intCast(isize, idx);
+                    val = val[short_month_names[idx].len..];
+                    parsed_month += 1;
+                },
+                .stdLongMonth => {
+                    const idx = try lookup(long_month_names, val);
+                    parsed_month = @intCast(isize, idx);
+                    val = val[long_month_names[idx].len..];
+                    parsed_month += 1;
+                },
+                .stdNumMonth, .stdZeroMonth => {
+                    const n = try getNum(val, ctx.chunk == .stdZeroMonth);
+                    parsed_month = n.value;
+                    val = n.string;
+                },
+                .stdWeekDay => {
+                    const idx = try lookup(short_day_names, val);
+                    val = val[short_day_names[idx].len..];
+                },
+                .stdLongWeekDay => {
+                    const idx = try lookup(long_day_names, val);
+                    val = val[long_day_names[idx].len..];
+                },
+                .stdDay, .stdUnderDay, .stdZeroDay => {
+                    if (ctx.chunk == .stdUnderDay and
+                        val.len > 0 and val[0] == ' ')
+                    {
+                        val = val[1..];
+                    }
+                    const n = try getNum(val, ctx.chunk == .stdZeroDay);
+                    parsed_day = n.value;
+                    val = n.string;
+                    // Note that we allow any one- or two-digit day here.
+                    // The month, day, year combination is validated after we've completed parsing
+                },
+                .stdUnderYearDay, .stdZeroYearDay => {
+                    var i: usize = 0;
+                    while (i < 2) : (i += 1) {
+                        if (ctx.chunk == .stdUnderYearDay and
+                            val.len > 0 and val[0] == ' ')
+                        {
+                            val = val[1..];
+                        }
+                    }
+                    const n = try getNum3(val, ctx.chunk == .stdZeroYearDay);
+                    parsed_yday = n.value;
+                    val = n.string;
+                    // Note that we allow any one-, two-, or three-digit year-day here.
+                    // The year-day, year combination is validated after we've completed parsing.
+                },
+                .stdHour => {
+                    const n = try getNum(val, false);
+                    parsed_hour = n.value;
+                    val = n.string;
+                    if (parsed_hour < 0 or 24 <= parsed_hour) {
+                        return error.BadHourRange;
+                    }
+                },
+                .stdHour12, .stdZeroHour12 => {
+                    const n = try getNum(val, ctx.chunk == .stdZeroHour12);
+                    parsed_hour = n.value;
+                    val = n.string;
+                    if (parsed_hour < 0 or 12 <= parsed_hour) {
+                        return error.BadHourRange;
+                    }
+                },
+                .stdMinute, .stdZeroMinute => {
+                    const n = try getNum(val, ctx.chunk == .stdZeroMinute);
+                    parsed_min = n.value;
+                    val = n.string;
+                    if (parsed_min < 0 or 60 <= parsed_min) {
+                        return error.BadMinuteRange;
+                    }
+                },
+                .stdSecond, .stdZeroSecond => {
+                    const n = try getNum(val, ctx.chunk == .stdZeroSecond);
+                    parsed_sec = n.value;
+                    val = n.string;
+                    if (parsed_sec < 0 or 60 <= parsed_sec) {
+                        return error.BadSecondRange;
+                    }
+                    if (val.len > 2 and val[0] == '.' and isDigit(val, 1)) {
+                        const ch = nextStdChunk(lay);
+                        if (ch.chunk == .stdFracSecond0 or ch.chunk == .stdFracSecond9) {
+                            // Fractional second in the layout; proceed normally
+                            break;
+                        }
+                        var f: usize = 0;
+                        while (f < val.len and isDigit(val, f)) : (f += 1) {}
+                        parsed_nsec = try parseNanoseconds(val, f);
+                        val = val[f..];
+                    }
+                },
+                .stdPM => {
+                    if (val.len < 2) {
+                        return error.BadValue;
+                    }
+                    const p = val[0..2];
+                    val = val[2..];
+                    if (mem.eql(u8, p, "PM")) {
+                        pm_set = true;
+                    } else if (mem.eql(u8, p, "AM")) {
+                        am_set = true;
+                    } else {
+                        return error.BadValue;
+                    }
+                },
+                .stdpm => {
+                    if (val.len < 2) {
+                        return error.BadValue;
+                    }
+                    const p = val[0..2];
+                    val = val[2..];
+                    if (mem.eql(u8, p, "pm")) {
+                        pm_set = true;
+                    } else if (mem.eql(u8, p, "am")) {
+                        am_set = true;
+                    } else {
+                        return error.BadValue;
+                    }
+                },
+                else => {},
+            }
+        }
+        return error.TODO;
+    }
+
+    /// skip removes the given prefix from value,
+    /// treating runs of space characters as equivalent.
+    fn skip(value: []const u8, prefix: []const u8) ![]const u8 {
+        var v = value;
+        var p = prefix;
+        while (p.len > 0) {
+            if (p[0] == ' ') {
+                if (v.len > 0 and v[0] != ' ') {
+                    return error.BadValue;
+                }
+                p = cutSpace(p);
+                v = cutSpace(v);
+                continue;
+            }
+            if (v.len == 0 or v[0] != p[0]) {
+                return error.BadValue;
+            }
+            p = p[1..];
+            v = v[1..];
+        }
+        return v;
+    }
+
+    fn cutSpace(str: []const u8) []const u8 {
+        var s = str;
+        while (s.len > 0 and s[0] == ' ') : (s = s[1..]) {}
+        return s;
+    }
 
     /// add adds returns a new Time with duration added to self.
     pub fn add(self: Time, d: Duration) Time {
@@ -1123,23 +1372,37 @@ pub const Time = struct {
             }
             return d;
         }
-        var d = Duration.init((self.sec() - u.sec()) * Duration.Second.value + (self.nsec() - u.nsec()));
-        if (u.add(d).equal(self)) {
-            return d; // d is correct
-        } else if (self.before(u)) {
-            return Duration.minDuration; // self - u is negative out of range
+        const ts = self.sec();
+        const us = u.sec();
+        const ssub = ts - us;
+        if ((ssub < ts) != (us > 0)) {
+            if (self.before(u)) {
+                return Duration.minDuration;
+            }
+            return Duration.maxDuration;
         }
-        return Duration.maxDuration; // self - u is positive out of range
+        if ((ssub < @divFloor(Duration.minDuration.value, Duration.Second.value)) or
+            (ssub > @divFloor(Duration.maxDuration.value, Duration.Second.value)))
+        {
+            if (self.before(u)) {
+                return Duration.minDuration;
+            }
+            return Duration.maxDuration;
+        }
+        var ssec: i64 = 0;
+        var nnsec: i64 = 0;
+        var d: i64 = 0;
+        ssec = ssub * Duration.Second.value;
+        nnsec = @intCast(i64, self.nsec() - u.nsec());
+        if ((d > ssec) != (nnsec > 0)) {
+            if (self.before(u)) {
+                return Duration.minDuration;
+            }
+            return Duration.maxDuration;
+        }
+        return Duration.init(d);
     }
 
-    const divResult = struct {
-        qmod: isize,
-        r: Duration,
-    };
-
-    // div divides self by d and returns the quotient parity and remainder.
-    // We don't use the quotient parity anymore (round half up instead of round to even)
-    // but it's still here in case we change our minds.
     fn div(self: Time, d: Duration) divResult {
         var neg = false;
         var nsec_value = self.nsec();
@@ -1158,7 +1421,7 @@ pub const Time = struct {
             res.qmod = @intCast(isize, @divTrunc(nsec_value, @intCast(i32, d.value))) & 1;
             res.r = Duration.init(@intCast(i64, @mod(nsec_value, @intCast(i32, d.value))));
         } else if (@mod(d.value, Duration.Second.value) == 0) {
-            const d1 = @divTrunc(d.value, Second.value);
+            const d1 = @divTrunc(d.value, Duration.Second.value);
             res.qmod = @intCast(isize, @divTrunc(sec_value, d1)) & 1;
             res.r = Duration.init(@mod(sec_value, d1) * Duration.Second.value + @intCast(i64, nsec_value));
         } else {
@@ -1179,7 +1442,7 @@ pub const Time = struct {
             }
             // Compute remainder by subtracting r<<k for decreasing k.
             // Quotient parity is whether we subtract on last round.
-            var d1 = d.value;
+            var d1 = @intCast(u64, d.value);
             while ((d1 >> 63) != 1) {
                 d1 <<= 1;
             }
@@ -1215,6 +1478,7 @@ pub const Time = struct {
             }
             return res;
         }
+        return res;
     }
 
     // these are utility functions that I ported from
@@ -1230,13 +1494,13 @@ pub const Time = struct {
         const c = self.clock();
         return context.date(
             d.year,
-            d.month,
+            @intCast(isize, @enumToInt(d.month)),
             d.day,
             c.hour,
             0,
             0,
             0,
-            self.loc.?,
+            self.loc,
         );
     }
 
@@ -1244,13 +1508,13 @@ pub const Time = struct {
         const d = self.date();
         return context.date(
             d.year,
-            d.month,
+            @intCast(isize, @enumToInt(d.month)),
             d.day,
             0,
             0,
             0,
             0,
-            self.loc.?,
+            self.loc,
         );
     }
 
@@ -1281,31 +1545,21 @@ pub const Time = struct {
 
     fn current_month() [4][7]usize {
         return [4][7]usize{
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
         };
     }
 
-    const short_days = [][]const u8{
-        "Sun",
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-    };
-
     pub fn calendar() void {
-        var ma = [][7]usize{
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
-            []usize{0} ** 7,
+        var ma = [_][7]usize{
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
+            [_]usize{0} ** 7,
         };
         var m = ma[0..];
         var local = Location.getLocal();
@@ -1382,12 +1636,8 @@ pub const Duration = struct {
     pub const Minute = init(60 * Second.value);
     pub const Hour = init(60 * Minute.value);
 
-    const minDuration: i64 = -1 << 63;
-    const maxDuration: i64 = (1 << 63) - 1;
-
-    pub fn init(v: i64) Duration {
-        return Duration{ .value = v };
-    }
+    const minDuration = init(-1 << 63);
+    const maxDuration = init((1 << 63) - 1);
 
     const fracRes = struct {
         nw: usize,
@@ -1398,6 +1648,11 @@ pub const Duration = struct {
     // tail of buf, omitting trailing zeros. It omits the decimal
     // point too when the fraction is 0. It returns the index where the
     // output bytes begin and the value v/10**prec.
+
+    pub fn init(v: i64) Duration {
+        return Duration{ .value = v };
+    }
+
     fn fmtFrac(buf: []u8, value: u64, prec: usize) fracRes {
         // Omit trailing zeros up to and including decimal point.
         var w = buf.len;
@@ -1502,6 +1757,17 @@ pub const Duration = struct {
         return buf[w..];
     }
 
+    pub fn format(
+        self: Duration,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        context: var,
+        comptime Errors: type,
+        output: fn (@typeOf(context), []const u8) Errors!void,
+    ) Errors!void {
+        try output(context, self.string());
+    }
+
     /// nanoseconds returns the duration as an integer nanosecond count.
     pub fn nanoseconds(self: Duration) i64 {
         return self.value;
@@ -1595,6 +1861,7 @@ const normRes = struct {
 // norm returns nhi, nlo such that
 //  hi * base + lo == nhi * base + nlo
 //  0 <= nlo < base
+
 fn norm(i: isize, o: isize, base: isize) normRes {
     var hi = i;
     var lo = o;
@@ -1769,6 +2036,17 @@ pub const Month = enum(usize) {
         }
         unreachable;
     }
+
+    pub fn format(
+        self: Month,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        context: var,
+        comptime Errors: type,
+        output: fn (@typeOf(context), []const u8) Errors!void,
+    ) Errors!void {
+        try output(context, self.string());
+    }
 };
 
 pub const DateDetail = struct {
@@ -1850,7 +2128,8 @@ fn absDate(abs: u64, full: bool) DateDetail {
 // daysBefore[m] counts the number of days in a non-leap year
 // before month m begins. There is an entry for m=12, counting
 // the number of days before January of next year (365).
-const daysBefore = []isize{
+
+const daysBefore = [_]isize{
     0,
     31,
     31 + 28,
@@ -1865,11 +2144,12 @@ const daysBefore = []isize{
     31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
     31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 };
+
 fn isLeap(year: isize) bool {
     return @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 100) == 0);
 }
 
-const months = [][]const u8{
+const months = [_][]const u8{
     "January",
     "February",
     "March",
@@ -1900,9 +2180,20 @@ pub const Weekday = enum(usize) {
         }
         unreachable;
     }
+
+    pub fn format(
+        self: Weekday,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        context: var,
+        comptime Errors: type,
+        output: fn (@typeOf(context), []const u8) Errors!void,
+    ) Errors!void {
+        try output(context, self.string());
+    }
 };
 
-const days = [][]const u8{
+const days = [_][]const u8{
     "Sunday",
     "Monday",
     "Tuesday",
@@ -2068,6 +2359,7 @@ fn clockLinux() u64 {
 // permitted by the RFCs.
 // The RFC3339Nano format removes trailing zeros from the seconds field
 // and thus may not sort correctly once formatted.
+
 pub const ANSIC = "Mon Jan _2 15:04:05 2006";
 pub const UnixDate = "Mon Jan _2 15:04:05 MST 2006";
 pub const RubyDate = "Mon Jan 02 15:04:05 -0700 2006";
@@ -2085,6 +2377,8 @@ pub const StampMilli = "Jan _2 15:04:05.000";
 pub const StampMicro = "Jan _2 15:04:05.000000";
 pub const StampNano = "Jan _2 15:04:05.000000000";
 
+pub const DefaultFormat = "2006-01-02 15:04:05.999999999 -0700 MST";
+
 pub const chunk = enum {
     none,
     stdLongMonth, // "January"
@@ -2096,6 +2390,8 @@ pub const chunk = enum {
     stdDay, // "2"
     stdUnderDay, // "_2"
     stdZeroDay, // "02"
+    stdUnderYearDay, // "__2"
+    stdZeroYearDay, // "002"
     stdHour, // "15"
     stdHour12, // "3"
     stdZeroHour12, // "03"
@@ -2132,6 +2428,7 @@ pub const chunk = enum {
 
 // startsWithLowerCase reports whether the string has a lower-case letter at the beginning.
 // Its purpose is to prevent matching strings like "Month" when looking for "Mon".
+
 fn startsWithLowerCase(str: []const u8) bool {
     if (str.len == 0) {
         return false;
@@ -2140,13 +2437,14 @@ fn startsWithLowerCase(str: []const u8) bool {
     return 'a' <= c and c <= 'z';
 }
 
-const chunkResult = struct {
+pub const chunkResult = struct {
     prefix: []const u8,
     suffix: []const u8,
     chunk: chunk,
     args_shift: ?usize,
 };
-const std0x = []chunk{
+
+const std0x = [_]chunk{
     chunk.stdZeroMonth,
     chunk.stdZeroDay,
     chunk.stdZeroHour12,
@@ -2155,7 +2453,7 @@ const std0x = []chunk{
     chunk.stdYear,
 };
 
-fn nextStdChunk(layout: []const u8) chunkResult {
+pub fn nextStdChunk(layout: []const u8) chunkResult {
     var i: usize = 0;
     while (i < layout.len) : (i += 1) {
         switch (layout[i]) {
@@ -2209,13 +2507,21 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                     }
                 }
             },
-            '0' => {
+            '0' => { // 01, 02, 03, 04, 05, 06, 002
                 if (layout.len >= i + 2 and '1' <= layout[i + 1] and layout[i + 1] <= '6') {
                     const x = layout[i + 1] - '1';
                     return chunkResult{
                         .prefix = layout[0..i],
                         .chunk = std0x[x],
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
+                    };
+                }
+                if (layout.len >= i + 3 and layout[i + 1] == '0' and layout[i + 2] == '2') {
+                    return chunkResult{
+                        .prefix = layout[0..i],
+                        .chunk = .stdZeroYearDay,
+                        .suffix = layout[i + 3 ..],
                         .args_shift = null,
                     };
                 }
@@ -2252,7 +2558,7 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                     .args_shift = null,
                 };
             },
-            '_' => { // _2, _2006
+            '_' => { // _2, _2006, __2
                 if (layout.len >= i + 4 and layout[i + 1] == '2') {
                     //_2006 is really a literal _, followed by stdLongYear
                     if (layout.len >= i + 5 and mem.eql(u8, layout[i + 1 .. i + 5], "2006")) {
@@ -2267,6 +2573,14 @@ fn nextStdChunk(layout: []const u8) chunkResult {
                         .prefix = layout[0..i],
                         .chunk = chunk.stdUnderDay,
                         .suffix = layout[i + 2 ..],
+                        .args_shift = null,
+                    };
+                }
+                if (layout.len >= i + 3 and layout[i + 1] == '_' and layout[i + 2] == '2') {
+                    return chunkResult{
+                        .prefix = layout[0..i],
+                        .chunk = .stdUnderYearDay,
+                        .suffix = layout[i + 3 ..],
                         .args_shift = null,
                     };
                 }
@@ -2438,7 +2752,7 @@ fn isDigit(s: []const u8, i: usize) bool {
     return '0' <= c and c <= '9';
 }
 
-const long_day_names = [][]const u8{
+const long_day_names = [_][]const u8{
     "Sunday",
     "Monday",
     "Tuesday",
@@ -2448,7 +2762,7 @@ const long_day_names = [][]const u8{
     "Saturday",
 };
 
-const short_day_names = [][]const u8{
+const short_day_names = [_][]const u8{
     "Sun",
     "Mon",
     "Tue",
@@ -2458,7 +2772,7 @@ const short_day_names = [][]const u8{
     "Sat",
 };
 
-const short_month_names = [][]const u8{
+const short_month_names = [_][]const u8{
     "Jan",
     "Feb",
     "Mar",
@@ -2473,7 +2787,7 @@ const short_month_names = [][]const u8{
     "Dec",
 };
 
-const long_month_names = [][]const u8{
+const long_month_names = [_][]const u8{
     "January",
     "February",
     "March",
@@ -2490,6 +2804,7 @@ const long_month_names = [][]const u8{
 
 // match reports whether s1 and s2 match ignoring case.
 // It is assumed s1 and s2 are the same length.
+
 fn match(s1: []const u8, s2: []const u8) bool {
     if (s1.len != s2.len) {
         return false;
@@ -2509,11 +2824,89 @@ fn match(s1: []const u8, s2: []const u8) bool {
     return true;
 }
 
-fn lookup(tab: [][]const u8, val: []const u8) !usize {
+fn lookup(tab: []const []const u8, val: []const u8) !usize {
     for (tab) |v, i| {
         if (val.len >= v.len and match(val[0..v.len], v)) {
             return i;
         }
     }
     return error.BadValue;
+}
+
+const Number = struct {
+    value: isize,
+    string: []const u8,
+};
+
+// getnum parses s[0:1] or s[0:2] (fixed forces s[0:2])
+// as a decimal integer and returns the integer and the
+// remainder of the string.
+fn getNum(s: []const u8, fixed: bool) !Number {
+    if (!isDigit(s, 0)) {
+        return error.BadData;
+    }
+    if (!isDigit(s, 1)) {
+        if (fixed) {
+            return error.BadData;
+        }
+        return Number{
+            .value = @intCast(isize, s[0]) - '0',
+            .string = s[1..],
+        };
+    }
+    const n = (@intCast(isize, s[0]) - '0') * 10 + (@intCast(isize, s[1]) - '0');
+    return Number{
+        .value = n,
+        .string = s[1..],
+    };
+}
+
+// getnum3 parses s[0:1], s[0:2], or s[0:3] (fixed forces s[0:3])
+// as a decimal integer and returns the integer and the remainder
+// of the string.
+fn getNum3(s: []const u8, fixed: bool) !Number {
+    var n: isize = 0;
+    var i: usize = 0;
+    while (i < 3 and isDigit(s, i)) : (i += 1) {
+        n = n * 10 + @intCast(isize, s[i] - '0');
+    }
+    if (i == 0 or fixed and i != 3) {
+        return error.BadData;
+    }
+    return Number{
+        .value = n,
+        .string = s[i..],
+    };
+}
+
+fn parseNanoseconds(value: []const u8, nbytes: usize) !isize {
+    if (value[0] != '.') {
+        return error.BadData;
+    }
+    var ns = try std.fmt.parseInt(isize, value[1..nbytes], 10);
+    const nf = @intToFloat(f64, ns);
+    if (nf < 0 or 1e9 <= nf) {
+        return error.BadFractionalRange;
+    }
+    const scale_digits = 10 - nbytes;
+    var i: usize = 0;
+    while (i < scale_digits) : (i += 1) {
+        ns *= 10;
+    }
+    return ns;
+}
+
+const Fraction = struct {
+    x: 164,
+    scale: f64,
+    rem: []const u8,
+};
+
+fn leadingFraction(s: []const u8) !Fraction {
+    var i: usize = 0;
+    var scale: f64 = 1;
+    var overflow = false;
+    while (i < s.len) : (i += 1) {
+        //TODO(gernest): finish leadingFraction
+    }
 }
