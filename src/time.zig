@@ -11,8 +11,8 @@ const Os = builtin.Os;
 const darwin = std.os.darwin;
 const linux = std.os.linux;
 const mem = std.mem;
-const posix = std.os.posix;
 const warn = std.debug.warn;
+const assert = std.debug.assert;
 
 const windows = std.os.windows;
 
@@ -37,12 +37,12 @@ pub const Location = struct {
     const alpha: i64 = -1 << 63;
     const omega: i64 = 1 << 63 - 1;
     const max_file_size: usize = 10 << 20;
-    const initLocation = switch (builtin.os) {
-        Os.linux => initLinux,
-        Os.macosx, Os.ios => initDarwin,
+    const initLocation = switch (builtin.os.tag) {
+        .linux => initLinux,
+        .macosx, .ios => initDarwin,
         else => @compileError("Unsupported OS"),
     };
-    pub var utc_local = Location.init(std.heap.direct_allocator, "UTC");
+    pub var utc_local = Location.init(std.heap.page_allocator, "UTC");
     var unix_sources = [_][]const u8{
         "/usr/share/zoneinfo/",
         "/usr/share/lib/zoneinfo/",
@@ -303,7 +303,7 @@ pub const Location = struct {
         if (size != 4) {
             return error.BadData;
         }
-        if (!mem.eql(u8, magic, "TZif")) {
+        if (!mem.eql(u8, &magic, "TZif")) {
             return error.BadData;
         }
         // 1-byte version, then 15 bytes of padding
@@ -435,38 +435,40 @@ pub const Location = struct {
     }
 
     // darwin_sources directory to search for timezone files.
-    fn readFile(path: []const u8, buf: *std.Buffer) !void {
+    fn readFile(path: []const u8) !void {
         var file = try std.fs.File.openRead(path);
         defer file.close();
         var stream = &file.inStream().stream;
         try stream.readAllBuffer(buf, max_file_size);
     }
 
-    fn loadLocationFile(name: []const u8, buf: *std.Buffer, sources: [][]const u8) !void {
-        var tmp = try std.Buffer.init(buf.list.allocator, "");
-        defer tmp.deinit();
+    fn loadLocationFile(a: *mem.Allocator, fileName: []const u8, sources: [][]const u8) ![]u8 {
+        var buf = std.ArrayList(u8).init(a);
+        defer buf.deinit();
         for (sources) |source| {
             try buf.resize(0);
-            try tmp.append(source);
-            try tmp.append("/");
-            try tmp.append(name);
-            if (readFile(tmp.toSliceConst(), buf)) {} else |err| {
+            try buf.appendSlice(source);
+            if (buf.items[buf.items.len - 1] != '/') {
+                try buf.append('/');
+            }
+            try buf.appendSlice(fileName);
+            if (std.fs.cwd().readFileAlloc(a, buf.items, 20 * 1024 * 1024)) |contents| {
+                return contents;
+            } else |err| {
                 continue;
             }
-            return;
         }
         return error.MissingZoneFile;
     }
 
     fn loadLocationFromTZFile(a: *mem.Allocator, name: []const u8, sources: [][]const u8) !Location {
-        var buf = try std.Buffer.init(a, "");
-        defer buf.deinit();
-        try loadLocationFile(name, &buf, sources);
-        return loadLocationFromTZData(a, name, buf.toSlice());
+        var buf: []u8 = undefined;
+        var t = try loadLocationFile(a, name, sources);
+        return loadLocationFromTZData(a, name, t);
     }
 
     pub fn load(name: []const u8) !Location {
-        return loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..]);
+        return loadLocationFromTZFile(std.heap.page_allocator, name, unix_sources[0..]);
     }
 
     fn initDarwin() Location {
@@ -475,20 +477,20 @@ pub const Location = struct {
 
     fn initLinux() Location {
         var tz: ?[]const u8 = null;
-        if (std.process.getEnvMap(std.heap.direct_allocator)) |value| {
+        if (std.process.getEnvMap(std.heap.page_allocator)) |value| {
             var env = value;
             defer env.deinit();
             tz = env.get("TZ");
         } else |err| {}
         if (tz) |name| {
             if (name.len != 0 and !mem.eql(u8, name, "UTC")) {
-                if (loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..])) |tzone| {
+                if (loadLocationFromTZFile(std.heap.page_allocator, name, unix_sources[0..])) |tzone| {
                     return tzone;
                 } else |err| {}
             }
         } else {
             var etc = [_][]const u8{"/etc/"};
-            if (loadLocationFromTZFile(std.heap.direct_allocator, "localtime", etc[0..])) |tzone| {
+            if (loadLocationFromTZFile(std.heap.page_allocator, "localtime", etc[0..])) |tzone| {
                 var zz = tzone;
                 zz.name = "local";
                 return zz;
@@ -834,31 +836,30 @@ pub const Time = struct {
         };
     }
 
-    fn string(self: Time, out: *std.Buffer) !void {
+    fn string(self: Time, out: *std.ArrayList(u8)) !void {
         try self.formatBuffer(out, DefaultFormat);
         // Format monotonic clock reading as m=±ddd.nnnnnnnnn.
         if ((self.wall & has_monotonic) != 0) {
-            var stream = &std.io.BufferOutStream.init(out).stream;
             var m2 = @intCast(u64, self.ext);
             var sign: u8 = '+';
             if (self.ext < 0) {
                 sign = '-';
                 m2 = @intCast(u64, -self.ext);
             }
-            var m1 = @divTrunc(m2, u64(1e9));
-            m2 = @mod(m2, u64(1e9));
-            var m0 = @divTrunc(m1, u64(1e9));
-            m1 = @mod(m1, u64(1e9));
-            try out.append("m=");
-            try out.appendByte(sign);
+            var m1 = @divTrunc(m2, @as(u64, 1e9));
+            m2 = @mod(m2, @as(u64, 1e9));
+            var m0 = @divTrunc(m1, @as(u64, 1e9));
+            m1 = @mod(m1, @as(u64, 1e9));
+            _ = try out.appendWrite("m=");
+            _ = try out.append(sign);
             var wid: usize = 0;
             if (m0 != 0) {
-                try appendInt(stream, @intCast(isize, m0), 0);
+                try appendInt(out, @intCast(isize, m0), 0);
                 wid = 9;
             }
-            try appendInt(stream, @intCast(isize, m1), wid);
-            try out.append(".");
-            try appendInt(stream, @intCast(isize, m2), 9);
+            try appendInt(out, @intCast(isize, m1), wid);
+            _ = try out.appendWrite(".");
+            try appendInt(out, @intCast(isize, m2), 9);
         }
     }
 
@@ -866,15 +867,15 @@ pub const Time = struct {
         self: Time,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        ctx: var,
-        comptime Errors: type,
-        output: fn (@typeOf(ctx), []const u8) Errors!void,
-    ) Errors!void {
+        out_stream: var,
+    ) !void {
         var out: [DefaultFormat.len * 2]u8 = undefined;
-        var a = &std.heap.FixedBufferAllocator.init(out[0..]).allocator;
-        var buf = std.Buffer.init(a, "") catch return;
-        self.string(&buf) catch return;
-        try output(ctx, buf.toSlice());
+        var fixed_buf_alloc = std.heap.FixedBufferAllocator.init(out[0..]);
+        var alloc = &fixed_buf_alloc.allocator;
+        var buf = std.ArrayList(u8).init(alloc);
+        defer buf.deinit();
+        try self.string(&buf);
+        _ = try out_stream.writeAll(buf.items);
     }
 
     /// writes into out a textual representation of the time value formatted
@@ -893,16 +894,14 @@ pub const Time = struct {
     /// and convenient representations of the reference time. For more information
     /// about the formats and the definition of the reference time, see the
     /// documentation for ANSIC and the other constants defined by this package.
-    pub fn formatBuffer(self: Time, out: *std.Buffer, layout: []const u8) !void {
-        try out.resize(0);
-        var stream = std.io.BufferOutStream.init(out);
-        return self.appendFormat(&stream.stream, layout);
+    pub fn formatBuffer(self: Time, out: *std.ArrayList(u8), layout: []const u8) !void {
+        return self.appendFormat(out, layout);
     }
 
-    fn appendInt(stream: var, x: isize, width: usize) !void {
+    fn appendInt(stream: *std.ArrayList(u8), x: isize, width: usize) !void {
         var u = std.math.absCast(x);
         if (x < 0) {
-            try stream.write("-");
+            _ = try stream.outStream().write("-");
         }
         var buf: [20]u8 = undefined;
         var i = buf.len;
@@ -916,10 +915,10 @@ pub const Time = struct {
         buf[i] = '0' + @intCast(u8, u);
         var w = buf.len - i;
         while (w < width) : (w += 1) {
-            try stream.write("0");
+            _ = try stream.outStream().write("0");
         }
         const v = buf[i..];
-        try stream.write(v);
+        _ = try stream.outStream().write(v);
     }
 
     fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
@@ -941,8 +940,8 @@ pub const Time = struct {
                 return;
             }
         }
-        try stream.write(".");
-        try stream.write(buf[0..x]);
+        _ = try stream.outStream().write(".");
+        _ = try stream.outStream().write(buf[0..x]);
     }
 
     /// appendFormat is like Format but appends the textual
@@ -956,7 +955,7 @@ pub const Time = struct {
         while (lay.len != 0) {
             const ctx = nextStdChunk(lay);
             if (ctx.prefix.len != 0) {
-                try stream.print("{}", ctx.prefix);
+                _ = try stream.outStream().write(ctx.prefix);
             }
             lay = ctx.suffix;
             switch (ctx.chunk) {
@@ -972,10 +971,10 @@ pub const Time = struct {
                     try appendInt(stream, ddate.year, 4);
                 },
                 .stdMonth => {
-                    try stream.print("{}", ddate.month.string()[0..3]);
+                    _ = try stream.outStream().write(ddate.month.string()[0..3]);
                 },
                 .stdLongMonth => {
-                    try stream.print("{}", ddate.month.string());
+                    _ = try stream.outStream().write(ddate.month.string());
                 },
                 .stdNumMonth => {
                     try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
@@ -985,18 +984,18 @@ pub const Time = struct {
                 },
                 .stdWeekDay => {
                     const wk = self.weekday();
-                    try stream.print("{}", wk.string()[0..3]);
+                    _ = try stream.outStream().write(wk.string()[0..3]);
                 },
                 .stdLongWeekDay => {
                     const wk = self.weekday();
-                    try stream.print("{}", wk.string());
+                    _ = try stream.outStream().write(wk.string());
                 },
                 .stdDay => {
                     try appendInt(stream, ddate.day, 0);
                 },
                 .stdUnderDay => {
                     if (ddate.day < 10) {
-                        try stream.print("{}", " ");
+                        _ = try stream.outStream().write(" ");
                     }
                     try appendInt(stream, ddate.day, 0);
                 },
@@ -1036,16 +1035,16 @@ pub const Time = struct {
                 },
                 .stdPM => {
                     if (clock_value.hour >= 12) {
-                        try stream.print("{}", "PM");
+                        _ = try stream.outStream().write("PM");
                     } else {
-                        try stream.print("{}", "AM");
+                        _ = try stream.outStream().write("AM");
                     }
                 },
                 .stdpm => {
                     if (clock_value.hour >= 12) {
-                        try stream.print("{}", "pm");
+                        _ = try stream.outStream().write("pm");
                     } else {
-                        try stream.print("{}", "am");
+                        _ = try stream.outStream().write("am");
                     }
                 },
                 .stdISO8601TZ, .stdISO8601ColonTZ, .stdISO8601SecondsTZ, .stdISO8601ShortTZ, .stdISO8601ColonSecondsTZ, .stdNumTZ, .stdNumColonTZ, .stdNumSecondsTz, .stdNumShortTZ, .stdNumColonSecondsTZ => {
@@ -1057,16 +1056,16 @@ pub const Time = struct {
                         ctx.chunk.eql(chunk.stdISO8601ShortTZ) or
                         ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ));
                     if (cond) {
-                        try stream.write("Z");
+                        _ = try stream.outStream().write("Z");
                     }
                     var z = @divTrunc(tz.offset, 60);
                     var abs_offset = tz.offset;
                     if (z < 0) {
-                        try stream.write("-");
+                        _ = try stream.outStream().write("-");
                         z = -z;
                         abs_offset = -abs_offset;
                     } else {
-                        try stream.write("+");
+                        _ = try stream.outStream().write("+");
                     }
                     try appendInt(stream, @divTrunc(z, 60), 2);
                     if (ctx.chunk.eql(chunk.stdISO8601ColonTZ) or
@@ -1075,7 +1074,7 @@ pub const Time = struct {
                         ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ) or
                         ctx.chunk.eql(chunk.stdNumColonSecondsTZ))
                     {
-                        try stream.write(":");
+                        _ = try stream.outStream().write(":");
                     }
                     if (!ctx.chunk.eql(chunk.stdNumShortTZ) and !ctx.chunk.eql(chunk.stdISO8601ShortTZ)) {
                         try appendInt(stream, @mod(z, 60), 2);
@@ -1088,22 +1087,22 @@ pub const Time = struct {
                         if (ctx.chunk.eql(chunk.stdNumColonSecondsTZ) or
                             ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ))
                         {
-                            try stream.write(":");
+                            _ = try stream.outStream().write(":");
                         }
                         try appendInt(stream, @mod(abs_offset, 60), 2);
                     }
                 },
                 .stdTZ => {
                     if (tz.name.len != 0) {
-                        try stream.print("{}", tz.name);
+                        _ = try stream.outStream().write(tz.name);
                         continue;
                     }
                     var z = @divTrunc(tz.offset, 60);
                     if (z < 0) {
-                        try stream.write("-");
+                        _ = try stream.outStream().write("-");
                         z = -z;
                     } else {
-                        try stream.write("+");
+                        _ = try stream.outStream().write("+");
                     }
                     try appendInt(stream, @divTrunc(z, 60), 2);
                     try appendInt(stream, @mod(z, 60), 2);
@@ -1331,14 +1330,14 @@ pub const Time = struct {
 
     /// add adds returns a new Time with duration added to self.
     pub fn add(self: Time, d: Duration) Time {
-        var dsec = @divTrunc(d.value, i64(1e9));
-        var nsec_value = self.nsec() + @intCast(i32, @mod(d.value, i64(1e9)));
-        if (nsec_value >= i32(1e9)) {
+        var dsec = @divTrunc(d.value, @as(i64, 1e9));
+        var nsec_value = self.nsec() + @intCast(i32, @mod(d.value, @as(i64, 1e9)));
+        if (nsec_value >= @as(i32, 1e9)) {
             dsec += 1;
-            nsec_value -= i32(1e9);
+            nsec_value -= @as(i32, 1e9);
         } else if (nsec_value < 0) {
             dsec -= 1;
-            nsec_value += i32(1e9);
+            nsec_value += @as(i32, 1e9);
         }
         var cp = self;
         var t = &cp;
@@ -1412,7 +1411,7 @@ pub const Time = struct {
             neg = true;
             sec_value = -sec_value;
             if (nsec_value < 0) {
-                nsec_value += i32(1e9);
+                nsec_value += @as(i32, 1e9);
                 sec_value -= 1;
             }
         }
@@ -1581,11 +1580,11 @@ pub const Time = struct {
             }
             at = 0;
         }
-        warn("\n");
+        warn("\n", .{});
         for (short_days) |ds| {
-            warn("{} |", ds);
+            warn("{} |", .{ds});
         }
-        warn("\n");
+        warn("\n", .{});
         for (m) |mv, idx| {
             for (mv) |dv, vx| {
                 if (idx != 0 and vx == 0 and dv == 0) {
@@ -1598,26 +1597,26 @@ pub const Time = struct {
                     return;
                 }
                 if (dv == 0) {
-                    warn("    |");
+                    warn("    |", .{});
                     continue;
                 }
                 if (dv == @intCast(usize, today)) {
                     if (dv < 10) {
-                        warn(" *{} |", dv);
+                        warn(" *{} |", .{dv});
                     } else {
-                        warn("*{} |", dv);
+                        warn("*{} |", .{dv});
                     }
                 } else {
                     if (dv < 10) {
-                        warn("  {} |", dv);
+                        warn("  {} |", .{dv});
                     } else {
-                        warn(" {} |", dv);
+                        warn(" {} |", .{dv});
                     }
                 }
             }
-            warn("\n");
+            warn("\n", .{});
         }
-        warn("\n");
+        warn("\n", .{});
     }
 };
 
@@ -1761,11 +1760,9 @@ pub const Duration = struct {
         self: Duration,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: var,
+    ) !void {
+        try out_stream(context, self.string());
     }
 
     /// nanoseconds returns the duration as an integer nanosecond count.
@@ -2041,11 +2038,9 @@ pub const Month = enum(usize) {
         self: Month,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: var,
+    ) !void {
+        try out_stream.writeAll(self.string());
     }
 };
 
@@ -2110,7 +2105,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
 
     // Estimate month on assumption that every month has 31 days.
     // The estimate may be too low by at most one month, so adjust.
-    var month = @intCast(usize, details.day) / usize(31);
+    var month = @intCast(usize, details.day) / @as(usize, 31);
     const end = daysBefore[month + 1];
     var begin: isize = 0;
     if (details.day >= end) {
@@ -2185,11 +2180,9 @@ pub const Weekday = enum(usize) {
         self: Weekday,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: var,
+    ) !void {
+        try out_stream(context, self.string());
     }
 };
 
@@ -2238,12 +2231,12 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: *Location) Time {
 pub fn unix(sec: i64, nsec: i64, local: *Location) Time {
     var x = sec;
     var y = nsec;
-    if (nsec < 0 or nsec >= i64(1e9)) {
-        const n = @divTrunc(nsec, i64(1e9));
+    if (nsec < 0 or nsec >= @as(i64, 1e9)) {
+        const n = @divTrunc(nsec, @as(i64, 1e9));
         x += n;
-        y -= (n * i64(1e9));
+        y -= (n * @as(i64, 1e9));
         if (y < 0) {
-            y += i64(1e9);
+            y += @as(i64, 1e9);
             x -= 1;
         }
     }
@@ -2257,34 +2250,33 @@ const bintime = struct {
 };
 
 fn timeNow() bintime {
-    switch (builtin.os) {
-        Os.linux => {
-            var ts: posix.timespec = undefined;
-            const err = posix.clock_gettime(posix.CLOCK_REALTIME, &ts);
-            std.debug.assert(err == 0);
+    switch (builtin.os.tag) {
+        .linux => {
+            var ts: std.os.timespec = undefined;
+            const err = std.os.clock_gettime(std.os.CLOCK_REALTIME, &ts) catch unreachable;
             return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec, .mono = clockNative() };
         },
-        Os.macosx, Os.ios => {
+        .macosx, .ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
-            std.debug.assert(err == 0);
+            assert(err == 0);
             return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec, .mono = clockNative() };
         },
         else => @compileError("Unsupported OS"),
     }
 }
 
-const clockNative = switch (builtin.os) {
-    Os.windows => clockWindows,
-    Os.linux => clockLinux,
-    Os.macosx, Os.ios => clockDarwin,
+const clockNative = switch (builtin.os.tag) {
+    .windows => clockWindows,
+    .linux => clockLinux,
+    .macosx, .ios => clockDarwin,
     else => @compileError("Unsupported OS"),
 };
 
 fn clockWindows() u64 {
     var result: i64 = undefined;
     var err = windows.QueryPerformanceCounter(&result);
-    debug.assert(err != windows.FALSE);
+    assert(err != windows.FALSE);
     return @intCast(u64, result);
 }
 
@@ -2293,10 +2285,10 @@ fn clockDarwin() u64 {
 }
 
 fn clockLinux() u64 {
-    var ts: posix.timespec = undefined;
-    var result = posix.clock_gettime(monotonic_clock_id, &ts);
-    debug.assert(posix.getErrno(result) == 0);
-    return @intCast(u64, ts.tv_sec) * u64(1000000000) + @intCast(u64, ts.tv_nsec);
+    var ts: std.os.timespec = undefined;
+    var result = std.os.linux.clock_gettime(std.os.CLOCK_MONOTONIC, &ts);
+    assert(std.os.linux.getErrno(result) == 0);
+    return @intCast(u64, ts.tv_sec) * @as(u64, 1000000000) + @intCast(u64, ts.tv_nsec);
 }
 
 // These are predefined layouts for use in Time.Format and time.Parse.
