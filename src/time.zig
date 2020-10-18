@@ -39,7 +39,7 @@ pub const Location = struct {
     const max_file_size: usize = 10 << 20;
     const initLocation = switch (builtin.os.tag) {
         .linux => initLinux,
-        .macosx, .ios => initDarwin,
+        .macos, .ios => initDarwin,
         else => @compileError("Unsupported OS"),
     };
     pub var utc_local = Location.init(std.heap.page_allocator, "UTC");
@@ -867,7 +867,7 @@ pub const Time = struct {
         self: Time,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        out_stream: var,
+        out_stream: anytype,
     ) !void {
         var out: [DefaultFormat.len * 2]u8 = undefined;
         var fixed_buf_alloc = std.heap.FixedBufferAllocator.init(out[0..]);
@@ -921,7 +921,7 @@ pub const Time = struct {
         _ = try stream.outStream().write(v);
     }
 
-    fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
+    fn formatNano(stream: anytype, nanosec: usize, n: usize, trim: bool) !void {
         var u = nanosec;
         var buf = [_]u8{0} ** 9;
         var start = buf.len;
@@ -946,7 +946,7 @@ pub const Time = struct {
 
     /// appendFormat is like Format but appends the textual
     /// representation to b
-    pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
+    pub fn appendFormat(self: Time, stream: anytype, layout: []const u8) !void {
         const abs_value = self.abs();
         const tz = self.zone();
         const clock_value = self.clock();
@@ -1760,7 +1760,7 @@ pub const Duration = struct {
         self: Duration,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        out_stream: var,
+        out_stream: anytype,
     ) !void {
         try out_stream(context, self.string());
     }
@@ -2038,7 +2038,7 @@ pub const Month = enum(usize) {
         self: Month,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        out_stream: var,
+        out_stream: anytype,
     ) !void {
         try out_stream.writeAll(self.string());
     }
@@ -2180,7 +2180,7 @@ pub const Weekday = enum(usize) {
         self: Weekday,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        out_stream: var,
+        out_stream: anytype,
     ) !void {
         try out_stream(context, self.string());
     }
@@ -2256,7 +2256,7 @@ fn timeNow() bintime {
             const err = std.os.clock_gettime(std.os.CLOCK_REALTIME, &ts) catch unreachable;
             return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec, .mono = clockNative() };
         },
-        .macosx, .ios => {
+        .macos, .ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
             assert(err == 0);
@@ -2269,7 +2269,7 @@ fn timeNow() bintime {
 const clockNative = switch (builtin.os.tag) {
     .windows => clockWindows,
     .linux => clockLinux,
-    .macosx, .ios => clockDarwin,
+    .macos, .ios => clockDarwin,
     else => @compileError("Unsupported OS"),
 };
 
