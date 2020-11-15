@@ -193,7 +193,7 @@ test "TestFormat" {
     defer buf.deinit();
     for (format_tests) |value| {
         try buf.resize(0);
-        try ts.formatBuffer(&buf, value.format);
+        try ts.formatBuffer(buf.writer(), value.format);
         testing.expect(std.mem.eql(u8, buf.items, value.result));
     }
 }
@@ -215,13 +215,12 @@ test "TestFormatSingleDigits" {
     var tt = time.date(2001, 2, 3, 4, 5, 6, 700000000, &Location.utc_local);
     const ts = formatTest.init("single digit format", "3:4:5", "4:5:6");
 
-    try tt.formatBuffer(&buf, ts.format);
+    try tt.formatBuffer(buf.writer(), ts.format);
     testing.expect(std.mem.eql(u8, buf.items, ts.result));
 
-    try buf.resize(0);
-
-    try buf.outStream().print("{}", .{tt});
     const want = "2001-02-03 04:05:06.7 +0000 UTC";
+    try buf.resize(0);
+    try buf.writer().print("{}", .{tt});
     testing.expect(std.mem.eql(u8, buf.items, want));
 }
 
@@ -251,17 +250,17 @@ test "TestFormatShortYear" {
         const x = @intCast(isize, m);
         var tt = time.date(y, x, 1, 0, 0, 0, 0, &Location.utc_local);
         try buf.resize(0);
-        try tt.formatBuffer(&buf, "2006.01.02");
+        try tt.formatBuffer(buf.writer(), "2006.01.02");
         try want.resize(0);
         const day: usize = 1;
         const month: usize = 1;
         if (y < 0) {
-            try buf.outStream().print("-{d:4}.{d:2}.{d:2}", .{ math.absCast(y), month, day });
+            try want.writer().print("-{d:0>4}.{d:0>2}.{d:0>2}", .{ math.absCast(y), month, day });
         } else {
-            try buf.outStream().print("{d:4}.{d:2}.{d:2}", .{ math.absCast(y), month, day });
+            try want.writer().print("{d:0>4}.{d:0>2}.{d:0>2}", .{ math.absCast(y), month, day });
         }
         if (!std.mem.eql(u8, buf.items, want.items)) {
-            std.debug.warn("case: {} expected {} got {}\n", .{ y, want.items, buf.items });
+            std.debug.warn("case: '{}' expected '{}' got '{}'\n", .{ y, want.items, buf.items });
         }
     }
 }
