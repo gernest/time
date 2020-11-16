@@ -11,8 +11,8 @@ const Os = builtin.Os;
 const darwin = std.os.darwin;
 const linux = std.os.linux;
 const mem = std.mem;
-const posix = std.os.posix;
 const warn = std.debug.warn;
+const assert = std.debug.assert;
 
 const windows = std.os.windows;
 
@@ -37,12 +37,12 @@ pub const Location = struct {
     const alpha: i64 = -1 << 63;
     const omega: i64 = 1 << 63 - 1;
     const max_file_size: usize = 10 << 20;
-    const initLocation = switch (builtin.os) {
-        Os.linux => initLinux,
-        Os.macosx, Os.ios => initDarwin,
+    const initLocation = switch (builtin.os.tag) {
+        .linux => initLinux,
+        .macos, .ios => initDarwin,
         else => @compileError("Unsupported OS"),
     };
-    pub var utc_local = Location.init(std.heap.direct_allocator, "UTC");
+    pub var utc_local = Location.init(std.heap.page_allocator, "UTC");
     var unix_sources = [_][]const u8{
         "/usr/share/zoneinfo/",
         "/usr/share/lib/zoneinfo/",
@@ -136,7 +136,7 @@ pub const Location = struct {
         };
     }
 
-    fn deinit(self: *Location) void {
+    pub fn deinit(self: *Location) void {
         self.arena.deinit();
     }
 
@@ -303,7 +303,7 @@ pub const Location = struct {
         if (size != 4) {
             return error.BadData;
         }
-        if (!mem.eql(u8, magic, "TZif")) {
+        if (!mem.eql(u8, &magic, "TZif")) {
             return error.BadData;
         }
         // 1-byte version, then 15 bytes of padding
@@ -435,38 +435,40 @@ pub const Location = struct {
     }
 
     // darwin_sources directory to search for timezone files.
-    fn readFile(path: []const u8, buf: *std.Buffer) !void {
+    fn readFile(path: []const u8) !void {
         var file = try std.fs.File.openRead(path);
         defer file.close();
         var stream = &file.inStream().stream;
         try stream.readAllBuffer(buf, max_file_size);
     }
 
-    fn loadLocationFile(name: []const u8, buf: *std.Buffer, sources: [][]const u8) !void {
-        var tmp = try std.Buffer.init(buf.list.allocator, "");
-        defer tmp.deinit();
+    fn loadLocationFile(a: *mem.Allocator, fileName: []const u8, sources: [][]const u8) ![]u8 {
+        var buf = std.ArrayList(u8).init(a);
+        defer buf.deinit();
         for (sources) |source| {
             try buf.resize(0);
-            try tmp.append(source);
-            try tmp.append("/");
-            try tmp.append(name);
-            if (readFile(tmp.toSliceConst(), buf)) {} else |err| {
+            try buf.appendSlice(source);
+            if (buf.items[buf.items.len - 1] != '/') {
+                try buf.append('/');
+            }
+            try buf.appendSlice(fileName);
+            if (std.fs.cwd().readFileAlloc(a, buf.items, 20 * 1024 * 1024)) |contents| {
+                return contents;
+            } else |err| {
                 continue;
             }
-            return;
         }
         return error.MissingZoneFile;
     }
 
     fn loadLocationFromTZFile(a: *mem.Allocator, name: []const u8, sources: [][]const u8) !Location {
-        var buf = try std.Buffer.init(a, "");
-        defer buf.deinit();
-        try loadLocationFile(name, &buf, sources);
-        return loadLocationFromTZData(a, name, buf.toSlice());
+        var buf: []u8 = undefined;
+        var t = try loadLocationFile(a, name, sources);
+        return loadLocationFromTZData(a, name, t);
     }
 
     pub fn load(name: []const u8) !Location {
-        return loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..]);
+        return loadLocationFromTZFile(std.heap.page_allocator, name, unix_sources[0..]);
     }
 
     fn initDarwin() Location {
@@ -475,20 +477,20 @@ pub const Location = struct {
 
     fn initLinux() Location {
         var tz: ?[]const u8 = null;
-        if (std.process.getEnvMap(std.heap.direct_allocator)) |value| {
+        if (std.process.getEnvMap(std.heap.page_allocator)) |value| {
             var env = value;
             defer env.deinit();
             tz = env.get("TZ");
         } else |err| {}
         if (tz) |name| {
             if (name.len != 0 and !mem.eql(u8, name, "UTC")) {
-                if (loadLocationFromTZFile(std.heap.direct_allocator, name, unix_sources[0..])) |tzone| {
+                if (loadLocationFromTZFile(std.heap.page_allocator, name, unix_sources[0..])) |tzone| {
                     return tzone;
                 } else |err| {}
             }
         } else {
             var etc = [_][]const u8{"/etc/"};
-            if (loadLocationFromTZFile(std.heap.direct_allocator, "localtime", etc[0..])) |tzone| {
+            if (loadLocationFromTZFile(std.heap.page_allocator, "localtime", etc[0..])) |tzone| {
                 var zz = tzone;
                 zz.name = "local";
                 return zz;
@@ -543,6 +545,8 @@ const nsec_shift = 30;
 const context = @This();
 
 pub const Time = struct {
+    const Self = @This();
+
     wall: u64,
     ext: i64,
     loc: *Location,
@@ -566,14 +570,14 @@ pub const Time = struct {
     // We don't use the quotient parity anymore (round half up instead of round to even)
     // but it's still here in case we change our minds.
 
-    fn nsec(self: Time) i32 {
+    fn nsec(self: Self) i32 {
         if (self.wall == 0) {
             return 0;
         }
         return @intCast(i32, self.wall & nsec_mask);
     }
 
-    fn sec(self: Time) i64 {
+    fn sec(self: Self) i64 {
         if ((self.wall & has_monotonic) != 0) {
             return wall_to_internal + @intCast(i64, self.wall << 1 >> (nsec_shift + 1));
         }
@@ -581,15 +585,15 @@ pub const Time = struct {
     }
 
     // unixSec returns the time's seconds since Jan 1 1970 (Unix time).
-    fn unixSec(self: Time) i64 {
+    fn unixSec(self: Self) i64 {
         return self.sec() + internal_to_unix;
     }
 
-    pub fn unix(self: Time) i64 {
+    pub fn unix(self: Self) i64 {
         return self.unixSec();
     }
 
-    fn addSec(self: *Time, d: i64) void {
+    fn addSec(self: *Self, d: i64) void {
         if ((self.wall & has_monotonic) != 0) {
             const s = @intCast(i64, self.wall << 1 >> (nsec_shift + 1));
             const dsec = s + d;
@@ -612,7 +616,7 @@ pub const Time = struct {
     /// addDate normalizes its result in the same way that Date does,
     /// so, for example, adding one month to October 31 yields
     /// December 1, the normalized form for November 31.
-    pub fn addDate(self: Time, years: isize, number_of_months: isize, number_of_days: isize) Time {
+    pub fn addDate(self: Self, years: isize, number_of_months: isize, number_of_days: isize) Self {
         const d = self.date();
         const c = self.clock();
         const m = @intCast(isize, @enumToInt(d.month)) + number_of_months;
@@ -628,19 +632,19 @@ pub const Time = struct {
         );
     }
 
-    fn stripMono(self: *Time) void {
+    fn stripMono(self: *Self) void {
         if ((self.wall & has_monotonic) != 0) {
             self.ext = self.sec();
             self.wall &= nsec_mask;
         }
     }
 
-    pub fn setLoc(self: *Time, l: *Location) void {
+    pub fn setLoc(self: Self, l: *Location) void {
         self.stripMono();
         self.loc = l;
     }
 
-    fn setMono(self: *Time, m: i64) void {
+    fn setMono(self: Self, m: i64) void {
         if ((self.wall & has_monotonic) == 0) {
             const s = self.ext;
             if (s < min_wall or max_wall < s) {
@@ -655,7 +659,7 @@ pub const Time = struct {
     // This function is used only for testing,
     // so it's OK that technically 0 is a valid
     // monotonic clock reading as well.
-    fn mono(self: *Time) i64 {
+    fn mono(self: Self) i64 {
         if ((self.wall & has_monotonic) == 0) {
             return 0;
         }
@@ -664,19 +668,19 @@ pub const Time = struct {
 
     /// reports whether self represents the zero time instant,
     /// January 1, year 1, 00:00:00 UTC.
-    pub fn isZero(self: Time) bool {
+    pub fn isZero(self: Self) bool {
         return self.sec() == 0 and self.nsec() == 0;
     }
 
     /// returns true if time self is after time u.
-    pub fn after(self: Time, u: Time) bool {
+    pub fn after(self: Self, u: Self) bool {
         const ts = self.sec();
         const us = u.sec();
         return ts > us or (ts == us and self.nsec() > u.nsec());
     }
 
     /// returns true if time self is before u.
-    pub fn before(self: Time, u: Time) bool {
+    pub fn before(self: Self, u: Self) bool {
         return (self.sec() < u.sec()) or (self.sec() == u.sec() and self.nsec() < u.nsec());
     }
 
@@ -685,13 +689,13 @@ pub const Time = struct {
     /// For example, 6:00 +0200 CEST and 4:00 UTC are Equal.
     /// See the documentation on the Time type for the pitfalls of using == with
     /// Time values; most code should use Equal instead.
-    pub fn equal(self: Time, u: Time) bool {
+    pub fn equal(self: Self, u: Self) bool {
         return self.sec() == u.sec() and self.nsec() == u.nsec();
     }
 
     /// abs returns the time self as an absolute time, adjusted by the zone offset.
     /// It is called when computing a presentation property like Month or Hour.
-    fn abs(self: Time) u64 {
+    fn abs(self: Self) u64 {
         var usec = self.unixSec();
         const d = self.loc.lookup(usec);
         usec += @intCast(i64, d.offset);
@@ -700,27 +704,27 @@ pub const Time = struct {
         return @bitCast(u64, result);
     }
 
-    pub fn date(self: Time) DateDetail {
+    pub fn date(self: Self) DateDetail {
         return absDate(self.abs(), true);
     }
 
-    pub fn year(self: Time) isize {
+    pub fn year(self: Self) isize {
         const d = self.date();
         return d.year;
     }
 
-    pub fn month(self: Time) Month {
+    pub fn month(self: Self) Month {
         const d = self.date();
         return d.month;
     }
 
-    pub fn day(self: Time) isize {
+    pub fn day(self: Self) isize {
         const d = self.date();
         return d.day;
     }
 
     /// returns the day of the week specified by self.
-    pub fn weekday(self: Time) Weekday {
+    pub fn weekday(self: Self) Weekday {
         return absWeekday(self.abs());
     }
 
@@ -728,7 +732,7 @@ pub const Time = struct {
     /// Week ranges from 1 to 53. Jan 01 to Jan 03 of year n might belong to
     /// week 52 or 53 of year n-1, and Dec 29 to Dec 31 might belong to week 1
     /// of year n+1.
-    pub fn isoWeek(self: Time) ISOWeek {
+    pub fn isoWeek(self: Self) ISOWeek {
         var d = self.date();
         const wday = @mod(@intCast(isize, @enumToInt(self.weekday()) + 8), 7);
         const Mon: isize = 0;
@@ -781,43 +785,43 @@ pub const Time = struct {
     }
 
     /// clock returns the hour, minute, and second within the day specified by t.
-    pub fn clock(self: Time) Clock {
+    pub fn clock(self: Self) Clock {
         return Clock.absClock(self.abs());
     }
 
     /// returns the hour within the day specified by self, in the range [0, 23].
-    pub fn hour(self: Time) isize {
+    pub fn hour(self: Self) isize {
         return @divTrunc(@intCast(isize, self.abs() % seconds_per_day), seconds_per_hour);
     }
 
     /// returns the minute offset within the hour specified by self, in the
     /// range [0, 59].
-    pub fn minute(self: Time) isize {
+    pub fn minute(self: Self) isize {
         return @divTrunc(@intCast(isize, self.abs() % seconds_per_hour), seconds_per_minute);
     }
 
     /// returns the second offset within the minute specified by self, in the
     /// range [0, 59].
-    pub fn second(self: Time) isize {
+    pub fn second(self: Self) isize {
         return @intCast(isize, self.abs() % seconds_per_minute);
     }
 
     /// returns the nanosecond offset within the second specified by self,
     /// in the range [0, 999999999].
-    pub fn nanosecond(self: Time) isize {
+    pub fn nanosecond(self: Self) isize {
         return @intCast(isize, self.nsec());
     }
 
     /// returns the day of the year specified by self, in the range [1,365] for non-leap years,
     /// and [1,366] in leap years.
-    pub fn yearDay(self: Time) isize {
+    pub fn yearDay(self: Self) isize {
         const d = absDate(self.abs(), false);
         return d.yday + 1;
     }
 
     /// computes the time zone in effect at time t, returning the abbreviated
     /// name of the zone (such as "CET") and its offset in seconds east of UTC.
-    pub fn zone(self: Time) ZoneDetail {
+    pub fn zone(self: Self) ZoneDetail {
         const zn = self.loc.lookup(self.unixSec());
         return ZoneDetail{
             .name = zn.name,
@@ -826,7 +830,7 @@ pub const Time = struct {
     }
 
     /// utc returns time with the location set to UTC.
-    fn utc(self: Time) Time {
+    fn utc(self: Self) Self {
         return Time{
             .wall = self.wall,
             .ext = self.ext,
@@ -834,47 +838,40 @@ pub const Time = struct {
         };
     }
 
-    fn string(self: Time, out: *std.Buffer) !void {
+    fn string(self: Self, out: anytype) !void {
         try self.formatBuffer(out, DefaultFormat);
         // Format monotonic clock reading as m=±ddd.nnnnnnnnn.
         if ((self.wall & has_monotonic) != 0) {
-            var stream = &std.io.BufferOutStream.init(out).stream;
             var m2 = @intCast(u64, self.ext);
             var sign: u8 = '+';
             if (self.ext < 0) {
                 sign = '-';
                 m2 = @intCast(u64, -self.ext);
             }
-            var m1 = @divTrunc(m2, u64(1e9));
-            m2 = @mod(m2, u64(1e9));
-            var m0 = @divTrunc(m1, u64(1e9));
-            m1 = @mod(m1, u64(1e9));
-            try out.append("m=");
-            try out.appendByte(sign);
+            var m1 = @divTrunc(m2, @as(u64, 1e9));
+            m2 = @mod(m2, @as(u64, 1e9));
+            var m0 = @divTrunc(m1, @as(u64, 1e9));
+            m1 = @mod(m1, @as(u64, 1e9));
+            try out.writeAll("m=");
+            try out.writeByte(sign);
             var wid: usize = 0;
             if (m0 != 0) {
-                try appendInt(stream, @intCast(isize, m0), 0);
+                try appendInt(out, @intCast(isize, m0), 0);
                 wid = 9;
             }
-            try appendInt(stream, @intCast(isize, m1), wid);
-            try out.append(".");
-            try appendInt(stream, @intCast(isize, m2), 9);
+            try appendInt(out, @intCast(isize, m1), wid);
+            try out.writeByte('.');
+            try appendInt(out, @intCast(isize, m2), 9);
         }
     }
 
     pub fn format(
-        self: Time,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        ctx: var,
-        comptime Errors: type,
-        output: fn (@typeOf(ctx), []const u8) Errors!void,
-    ) Errors!void {
-        var out: [DefaultFormat.len * 2]u8 = undefined;
-        var a = &std.heap.FixedBufferAllocator.init(out[0..]).allocator;
-        var buf = std.Buffer.init(a, "") catch return;
-        self.string(&buf) catch return;
-        try output(ctx, buf.toSlice());
+        out_stream: anytype,
+    ) !void {
+        try self.string(out_stream);
     }
 
     /// writes into out a textual representation of the time value formatted
@@ -893,16 +890,14 @@ pub const Time = struct {
     /// and convenient representations of the reference time. For more information
     /// about the formats and the definition of the reference time, see the
     /// documentation for ANSIC and the other constants defined by this package.
-    pub fn formatBuffer(self: Time, out: *std.Buffer, layout: []const u8) !void {
-        try out.resize(0);
-        var stream = std.io.BufferOutStream.init(out);
-        return self.appendFormat(&stream.stream, layout);
+    pub fn formatBuffer(self: Self, out: anytype, layout: []const u8) !void {
+        return self.appendFormat(out, layout);
     }
 
-    fn appendInt(stream: var, x: isize, width: usize) !void {
+    fn appendInt(stream: anytype, x: isize, width: usize) !void {
         var u = std.math.absCast(x);
         if (x < 0) {
-            try stream.write("-");
+            _ = try stream.write("-");
         }
         var buf: [20]u8 = undefined;
         var i = buf.len;
@@ -916,13 +911,13 @@ pub const Time = struct {
         buf[i] = '0' + @intCast(u8, u);
         var w = buf.len - i;
         while (w < width) : (w += 1) {
-            try stream.write("0");
+            _ = try stream.write("0");
         }
         const v = buf[i..];
-        try stream.write(v);
+        _ = try stream.write(v);
     }
 
-    fn formatNano(stream: var, nanosec: usize, n: usize, trim: bool) !void {
+    fn formatNano(stream: anytype, nanosec: usize, n: usize, trim: bool) !void {
         var u = nanosec;
         var buf = [_]u8{0} ** 9;
         var start = buf.len;
@@ -941,13 +936,13 @@ pub const Time = struct {
                 return;
             }
         }
-        try stream.write(".");
-        try stream.write(buf[0..x]);
+        _ = try stream.write(".");
+        _ = try stream.write(buf[0..x]);
     }
 
     /// appendFormat is like Format but appends the textual
     /// representation to b
-    pub fn appendFormat(self: Time, stream: var, layout: []const u8) !void {
+    pub fn appendFormat(self: Self, stream: anytype, layout: []const u8) !void {
         const abs_value = self.abs();
         const tz = self.zone();
         const clock_value = self.clock();
@@ -956,7 +951,7 @@ pub const Time = struct {
         while (lay.len != 0) {
             const ctx = nextStdChunk(lay);
             if (ctx.prefix.len != 0) {
-                try stream.print("{}", ctx.prefix);
+                try stream.writeAll(ctx.prefix);
             }
             lay = ctx.suffix;
             switch (ctx.chunk) {
@@ -972,10 +967,10 @@ pub const Time = struct {
                     try appendInt(stream, ddate.year, 4);
                 },
                 .stdMonth => {
-                    try stream.print("{}", ddate.month.string()[0..3]);
+                    _ = try stream.write(ddate.month.string()[0..3]);
                 },
                 .stdLongMonth => {
-                    try stream.print("{}", ddate.month.string());
+                    _ = try stream.write(ddate.month.string());
                 },
                 .stdNumMonth => {
                     try appendInt(stream, @intCast(isize, @enumToInt(ddate.month)), 0);
@@ -985,18 +980,18 @@ pub const Time = struct {
                 },
                 .stdWeekDay => {
                     const wk = self.weekday();
-                    try stream.print("{}", wk.string()[0..3]);
+                    _ = try stream.write(wk.string()[0..3]);
                 },
                 .stdLongWeekDay => {
                     const wk = self.weekday();
-                    try stream.print("{}", wk.string());
+                    _ = try stream.write(wk.string());
                 },
                 .stdDay => {
                     try appendInt(stream, ddate.day, 0);
                 },
                 .stdUnderDay => {
                     if (ddate.day < 10) {
-                        try stream.print("{}", " ");
+                        _ = try stream.write(" ");
                     }
                     try appendInt(stream, ddate.day, 0);
                 },
@@ -1036,16 +1031,16 @@ pub const Time = struct {
                 },
                 .stdPM => {
                     if (clock_value.hour >= 12) {
-                        try stream.print("{}", "PM");
+                        _ = try stream.write("PM");
                     } else {
-                        try stream.print("{}", "AM");
+                        _ = try stream.write("AM");
                     }
                 },
                 .stdpm => {
                     if (clock_value.hour >= 12) {
-                        try stream.print("{}", "pm");
+                        _ = try stream.write("pm");
                     } else {
-                        try stream.print("{}", "am");
+                        _ = try stream.write("am");
                     }
                 },
                 .stdISO8601TZ, .stdISO8601ColonTZ, .stdISO8601SecondsTZ, .stdISO8601ShortTZ, .stdISO8601ColonSecondsTZ, .stdNumTZ, .stdNumColonTZ, .stdNumSecondsTz, .stdNumShortTZ, .stdNumColonSecondsTZ => {
@@ -1057,16 +1052,16 @@ pub const Time = struct {
                         ctx.chunk.eql(chunk.stdISO8601ShortTZ) or
                         ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ));
                     if (cond) {
-                        try stream.write("Z");
+                        _ = try stream.write("Z");
                     }
                     var z = @divTrunc(tz.offset, 60);
                     var abs_offset = tz.offset;
                     if (z < 0) {
-                        try stream.write("-");
+                        _ = try stream.write("-");
                         z = -z;
                         abs_offset = -abs_offset;
                     } else {
-                        try stream.write("+");
+                        _ = try stream.write("+");
                     }
                     try appendInt(stream, @divTrunc(z, 60), 2);
                     if (ctx.chunk.eql(chunk.stdISO8601ColonTZ) or
@@ -1075,7 +1070,7 @@ pub const Time = struct {
                         ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ) or
                         ctx.chunk.eql(chunk.stdNumColonSecondsTZ))
                     {
-                        try stream.write(":");
+                        _ = try stream.write(":");
                     }
                     if (!ctx.chunk.eql(chunk.stdNumShortTZ) and !ctx.chunk.eql(chunk.stdISO8601ShortTZ)) {
                         try appendInt(stream, @mod(z, 60), 2);
@@ -1088,22 +1083,22 @@ pub const Time = struct {
                         if (ctx.chunk.eql(chunk.stdNumColonSecondsTZ) or
                             ctx.chunk.eql(chunk.stdISO8601ColonSecondsTZ))
                         {
-                            try stream.write(":");
+                            _ = try stream.write(":");
                         }
                         try appendInt(stream, @mod(abs_offset, 60), 2);
                     }
                 },
                 .stdTZ => {
                     if (tz.name.len != 0) {
-                        try stream.print("{}", tz.name);
+                        _ = try stream.write(tz.name);
                         continue;
                     }
                     var z = @divTrunc(tz.offset, 60);
                     if (z < 0) {
-                        try stream.write("-");
+                        _ = try stream.write("-");
                         z = -z;
                     } else {
-                        try stream.write("+");
+                        _ = try stream.write("+");
                     }
                     try appendInt(stream, @divTrunc(z, 60), 2);
                     try appendInt(stream, @mod(z, 60), 2);
@@ -1116,7 +1111,7 @@ pub const Time = struct {
         }
     }
 
-    fn parseInternal(layout: []const u8, value: []const u8, default_location: *Location, local: *Location) !Time {
+    fn parseInternal(layout: []const u8, value: []const u8, default_location: *Location, local: *Location) !Self {
         var alayout = layout;
         var avalue = value;
         var am_set = false;
@@ -1330,15 +1325,15 @@ pub const Time = struct {
     }
 
     /// add adds returns a new Time with duration added to self.
-    pub fn add(self: Time, d: Duration) Time {
-        var dsec = @divTrunc(d.value, i64(1e9));
-        var nsec_value = self.nsec() + @intCast(i32, @mod(d.value, i64(1e9)));
-        if (nsec_value >= i32(1e9)) {
+    pub fn add(self: Self, d: Duration) Self {
+        var dsec = @divTrunc(d.value, @as(i64, 1e9));
+        var nsec_value = self.nsec() + @intCast(i32, @mod(d.value, @as(i64, 1e9)));
+        if (nsec_value >= @as(i32, 1e9)) {
             dsec += 1;
-            nsec_value -= i32(1e9);
+            nsec_value -= @as(i32, 1e9);
         } else if (nsec_value < 0) {
             dsec -= 1;
-            nsec_value += i32(1e9);
+            nsec_value += @as(i32, 1e9);
         }
         var cp = self;
         var t = &cp;
@@ -1359,7 +1354,7 @@ pub const Time = struct {
     /// value that can be stored in a Duration, the maximum (or minimum) duration
     /// will be returned.
     /// To compute t-d for a duration d, use self.add(-d).
-    pub fn sub(self: Time, u: Time) Duration {
+    pub fn sub(self: Self, u: Self) Duration {
         if ((self.wall & u.wall & has_monotonic) != 0) {
             const te = self.ext;
             const ue = u.ext;
@@ -1403,7 +1398,7 @@ pub const Time = struct {
         return Duration.init(d);
     }
 
-    fn div(self: Time, d: Duration) divResult {
+    fn div(self: Self, d: Duration) divResult {
         var neg = false;
         var nsec_value = self.nsec();
         var sec_value = self.sec();
@@ -1412,7 +1407,7 @@ pub const Time = struct {
             neg = true;
             sec_value = -sec_value;
             if (nsec_value < 0) {
-                nsec_value += i32(1e9);
+                nsec_value += @as(i32, 1e9);
                 sec_value -= 1;
             }
         }
@@ -1484,12 +1479,12 @@ pub const Time = struct {
     // these are utility functions that I ported from
     // github.com/jinzhu/now
 
-    pub fn beginningOfMinute(self: Time) Time {
+    pub fn beginningOfMinute(self: Self) Self {
         //TODO: this needs truncate to be implemented.
         return self;
     }
 
-    pub fn beginningOfHour(self: Time) Time {
+    pub fn beginningOfHour(self: Self) Self {
         const d = self.date();
         const c = self.clock();
         return context.date(
@@ -1504,7 +1499,7 @@ pub const Time = struct {
         );
     }
 
-    pub fn beginningOfDay(self: Time) Time {
+    pub fn beginningOfDay(self: Self) Self {
         const d = self.date();
         return context.date(
             d.year,
@@ -1518,13 +1513,13 @@ pub const Time = struct {
         );
     }
 
-    pub fn beginningOfWeek(self: Time) Time {
+    pub fn beginningOfWeek(self: Self) Self {
         var t = self.beginningOfDay();
         const week_day = @intCast(isize, @enumToInt(self.weekday()));
         return self.addDate(0, 0, -week_day);
     }
 
-    pub fn beginningOfMonth(self: Time) Time {
+    pub fn beginningOfMonth(self: Self) Self {
         var d = self.date();
         return context.date(
             d.year,
@@ -1538,7 +1533,7 @@ pub const Time = struct {
         );
     }
 
-    pub fn endOfMonth(self: Time) Time {
+    pub fn endOfMonth(self: Self) Self {
         return self.beginningOfMonth().addDate(0, 1, 0).
             add(Duration.init(-Duration.Hour.value));
     }
@@ -1581,11 +1576,11 @@ pub const Time = struct {
             }
             at = 0;
         }
-        warn("\n");
+        warn("\n", .{});
         for (short_days) |ds| {
-            warn("{} |", ds);
+            warn("{} |", .{ds});
         }
-        warn("\n");
+        warn("\n", .{});
         for (m) |mv, idx| {
             for (mv) |dv, vx| {
                 if (idx != 0 and vx == 0 and dv == 0) {
@@ -1598,26 +1593,26 @@ pub const Time = struct {
                     return;
                 }
                 if (dv == 0) {
-                    warn("    |");
+                    warn("    |", .{});
                     continue;
                 }
                 if (dv == @intCast(usize, today)) {
                     if (dv < 10) {
-                        warn(" *{} |", dv);
+                        warn(" *{} |", .{dv});
                     } else {
-                        warn("*{} |", dv);
+                        warn("*{} |", .{dv});
                     }
                 } else {
                     if (dv < 10) {
-                        warn("  {} |", dv);
+                        warn("  {} |", .{dv});
                     } else {
-                        warn(" {} |", dv);
+                        warn(" {} |", .{dv});
                     }
                 }
             }
-            warn("\n");
+            warn("\n", .{});
         }
-        warn("\n");
+        warn("\n", .{});
     }
 };
 
@@ -1761,11 +1756,9 @@ pub const Duration = struct {
         self: Duration,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: anytype,
+    ) !void {
+        try out_stream(context, self.string());
     }
 
     /// nanoseconds returns the duration as an integer nanosecond count.
@@ -1970,7 +1963,8 @@ pub fn date(
 
     abs += @intCast(u64, hour * seconds_per_hour + min * seconds_per_minute + sec);
     var unix_value: i64 = undefined;
-    _ = @addWithOverflow(i64, @intCast(i64, abs), (absolute_to_internal + internal_to_unix), &unix_value);
+    _ = @addWithOverflow(i64, @bitCast(i64, abs), (absolute_to_internal + internal_to_unix), &unix_value);
+
     // Look for zone offset for t, so we can adjust to UTC.
     // The lookup function expects UTC, so we pass t in the
     // hope that it will not be too close to a zone transition,
@@ -2041,11 +2035,9 @@ pub const Month = enum(usize) {
         self: Month,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: anytype,
+    ) !void {
+        try out_stream.writeAll(self.string());
     }
 };
 
@@ -2110,7 +2102,7 @@ fn absDate(abs: u64, full: bool) DateDetail {
 
     // Estimate month on assumption that every month has 31 days.
     // The estimate may be too low by at most one month, so adjust.
-    var month = @intCast(usize, details.day) / usize(31);
+    var month = @intCast(usize, details.day) / @as(usize, 31);
     const end = daysBefore[month + 1];
     var begin: isize = 0;
     if (details.day >= end) {
@@ -2185,11 +2177,9 @@ pub const Weekday = enum(usize) {
         self: Weekday,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
-        context: var,
-        comptime Errors: type,
-        output: fn (@typeOf(context), []const u8) Errors!void,
-    ) Errors!void {
-        try output(context, self.string());
+        out_stream: anytype,
+    ) !void {
+        try out_stream(context, self.string());
     }
 };
 
@@ -2238,12 +2228,12 @@ fn unixTimeWithLoc(sec: i64, nsec: i32, loc: *Location) Time {
 pub fn unix(sec: i64, nsec: i64, local: *Location) Time {
     var x = sec;
     var y = nsec;
-    if (nsec < 0 or nsec >= i64(1e9)) {
-        const n = @divTrunc(nsec, i64(1e9));
+    if (nsec < 0 or nsec >= @as(i64, 1e9)) {
+        const n = @divTrunc(nsec, @as(i64, 1e9));
         x += n;
-        y -= (n * i64(1e9));
+        y -= (n * @as(i64, 1e9));
         if (y < 0) {
-            y += i64(1e9);
+            y += @as(i64, 1e9);
             x -= 1;
         }
     }
@@ -2257,34 +2247,33 @@ const bintime = struct {
 };
 
 fn timeNow() bintime {
-    switch (builtin.os) {
-        Os.linux => {
-            var ts: posix.timespec = undefined;
-            const err = posix.clock_gettime(posix.CLOCK_REALTIME, &ts);
-            std.debug.assert(err == 0);
+    switch (builtin.os.tag) {
+        .linux => {
+            var ts: std.os.timespec = undefined;
+            const err = std.os.clock_gettime(std.os.CLOCK_REALTIME, &ts) catch unreachable;
             return bintime{ .sec = ts.tv_sec, .nsec = ts.tv_nsec, .mono = clockNative() };
         },
-        Os.macosx, Os.ios => {
+        .macos, .ios => {
             var tv: darwin.timeval = undefined;
             var err = darwin.gettimeofday(&tv, null);
-            std.debug.assert(err == 0);
+            assert(err == 0);
             return bintime{ .sec = tv.tv_sec, .nsec = tv.tv_usec, .mono = clockNative() };
         },
         else => @compileError("Unsupported OS"),
     }
 }
 
-const clockNative = switch (builtin.os) {
-    Os.windows => clockWindows,
-    Os.linux => clockLinux,
-    Os.macosx, Os.ios => clockDarwin,
+const clockNative = switch (builtin.os.tag) {
+    .windows => clockWindows,
+    .linux => clockLinux,
+    .macos, .ios => clockDarwin,
     else => @compileError("Unsupported OS"),
 };
 
 fn clockWindows() u64 {
     var result: i64 = undefined;
     var err = windows.QueryPerformanceCounter(&result);
-    debug.assert(err != windows.FALSE);
+    assert(err != windows.FALSE);
     return @intCast(u64, result);
 }
 
@@ -2293,10 +2282,10 @@ fn clockDarwin() u64 {
 }
 
 fn clockLinux() u64 {
-    var ts: posix.timespec = undefined;
-    var result = posix.clock_gettime(monotonic_clock_id, &ts);
-    debug.assert(posix.getErrno(result) == 0);
-    return @intCast(u64, ts.tv_sec) * u64(1000000000) + @intCast(u64, ts.tv_nsec);
+    var ts: std.os.timespec = undefined;
+    var result = std.os.linux.clock_gettime(std.os.CLOCK_MONOTONIC, &ts);
+    assert(std.os.linux.getErrno(result) == 0);
+    return @intCast(u64, ts.tv_sec) * @as(u64, 1000000000) + @intCast(u64, ts.tv_nsec);
 }
 
 // These are predefined layouts for use in Time.Format and time.Parse.

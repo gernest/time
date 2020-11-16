@@ -7,9 +7,9 @@ test "now" {
     var local = time.Location.getLocal();
     var now = time.now(&local);
 
-    warn("\n today's date {}", now.date());
-    warn("\n today's time {}", now.clock());
-    warn("\n local timezone detail  {}\n", now.zone());
+    warn("\n today's date {}", .{now.date()});
+    warn("\n today's time {}", .{now.clock()});
+    warn("\n local timezone detail  {}\n", .{now.zone()});
 
     // $ zig test example.zig
     // Test 1/1 now...
@@ -28,7 +28,7 @@ const formatTest = struct {
     }
 };
 
-const format_tests = []formatTest{
+const format_tests = [_]formatTest{
     formatTest.init("ANSIC", time.ANSIC),
     formatTest.init("UnixDate", time.UnixDate),
     formatTest.init("RubyDate", time.RubyDate),
@@ -55,13 +55,13 @@ test "time.format" {
     var local = time.Location.getLocal();
     var ts = time.now(&local);
 
-    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    var buf = std.ArrayList(u8).init(std.testing.allocator);
     defer buf.deinit();
-    warn("\n");
+    warn("\n", .{});
     for (format_tests) |value| {
-        try ts.format(&buf, value.format);
-        const got = buf.toSlice();
-        warn("{}:  {}\n", value.name, got);
+        try buf.resize(0);
+        try ts.formatBuffer(&buf, value.format);
+        warn("{}:  {}\n", .{ value.name, buf.items });
     }
 
     // Test 2/2 time.format...
@@ -93,19 +93,19 @@ test "durations" {
     const minute = Duration.Minute.value;
     const second = Duration.Second.value;
     var d = Duration.init(hour + minute * 4 + second * 10);
-    warn("duration is {} \n", d.string());
+    warn("duration is {} \n", .{d.string()});
 }
 
 test "addDate" {
     var local = time.Location.getLocal();
     var ts = time.now(&local);
-    var buf = try std.Buffer.init(std.debug.global_allocator, "");
+    var buf = std.ArrayList(u8).init(std.testing.allocator);
     defer buf.deinit();
     try ts.string(&buf);
-    warn("\ncurrent time is {}\n", buf.toSlice());
+    warn("\ncurrent time is {}\n", .{buf.items});
 
     // let's add 1 year
     ts = ts.addDate(1, 0, 0);
     try ts.string(&buf);
-    warn("this time next year is {}\n", buf.toSlice());
+    warn("this time next year is {}\n", .{buf.items});
 }
